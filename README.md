@@ -73,11 +73,6 @@ Included only:
 - bcftools
 - GATK
 
-Not included:
-
-- annotation
-- SV/CNV workflows
-- any extra analyses outside requested flow
 
 ## Execution Modes
 
@@ -285,19 +280,7 @@ nextflow run main.nf \
   --threads 4
 ```
 
-## Local Test
 
-Use the smoke test harness:
-
-```bash
-bash tests/run_smoke_test.sh
-```
-
-If Nextflow is in conda env:
-
-```bash
-NXF_CMD="conda run -n pop_gen nextflow" bash tests/run_smoke_test.sh
-```
 
 ## Operational Notes
 
@@ -313,6 +296,4 @@ NXF_CMD="conda run -n pop_gen nextflow" bash tests/run_smoke_test.sh
 - Process reports/traces/timeline/DAG are enabled in `nextflow.config` under `pipeline_info/`.
 - Work directory defaults to `work/`.
 
-## License / Usage
 
-Add your preferred license in a `LICENSE` file before public release on GitHub.
