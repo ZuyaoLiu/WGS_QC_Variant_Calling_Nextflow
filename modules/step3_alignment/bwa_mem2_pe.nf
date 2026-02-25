@@ -1,7 +1,7 @@
 process BWAMEM2_PE_PROCESS {
     tag "${sample_id}"
     container "${params.sif}"
-    cpus params.bwamem2_cpus
+    cpus { (params.bwamem2_cpus ?: params.threads ?: 1) as Integer }
     publishDir 'results/03_align', mode: 'copy'
 
     input:
@@ -13,7 +13,7 @@ process BWAMEM2_PE_PROCESS {
 
     script:
     """
-    bwa-mem2 mem -t ${task.cpus} -R "@RG\\tID:${sample_id}\\tSM:${sample_id}\\tPL:ILLUMINA" ${params.ref_base} ${r1} ${r2} | samtools view -@ ${task.cpus} -Sb -o ${sample_id}.unsorted.bam -
+    bwa-mem2 mem -t ${task.cpus} -R "@RG\\tID:${sample_id}\\tSM:${sample_id}\\tPL:ILLUMINA" ${params.bwamem2_parameters} ${params.ref_base} ${r1} ${r2} | samtools view -@ ${task.cpus} -Sb -o ${sample_id}.unsorted.bam -
     """
 }
 

@@ -1,7 +1,7 @@
 process GATK_BQSR_PROCESS {
     tag "${sample_id}"
     container "${params.sif}"
-    cpus params.gatk_cpus
+    cpus { (params.gatk_cpus ?: params.threads ?: 1) as Integer }
     publishDir 'results/05_variant_calling/gatk/bqsr', mode: 'copy'
 
     input:
@@ -27,7 +27,7 @@ process GATK_BQSR_PROCESS {
       gatk CreateSequenceDictionary -R ${ref_fa} -O ${ref_fa.baseName}.dict
     fi
 
-    bcftools view -v snps -i 'QUAL>=30 && DP>=10' -Oz -o ${sample_id}.highconf.snp.vcf.gz ${seed_vcf}
+    bcftools view -v snps -i 'QUAL>=40 && DP>=10 && DP<=200' -Oz -o ${sample_id}.highconf.snp.vcf.gz ${seed_vcf}
     tabix -f -p vcf ${sample_id}.highconf.snp.vcf.gz
 
     gatk BaseRecalibrator \
@@ -35,6 +35,7 @@ process GATK_BQSR_PROCESS {
       -R ${ref_fa} \
       -I ${markdup_bam} \
       --known-sites ${sample_id}.highconf.snp.vcf.gz \
+      ${params.gatk_baserecalibrator_parameters} \
       -O ${sample_id}.recal.table
 
     gatk ApplyBQSR \
@@ -42,6 +43,7 @@ process GATK_BQSR_PROCESS {
       -R ${ref_fa} \
       -I ${markdup_bam} \
       --bqsr-recal-file ${sample_id}.recal.table \
+      ${params.gatk_applybqsr_parameters} \
       -O ${sample_id}.recal.bam
 
     samtools index -@ ${task.cpus} ${sample_id}.recal.bam
@@ -55,7 +57,10 @@ workflow GATK_BQSR {
     ch_ref
 
     main:
-    ch_joined = ch_markdup.join(ch_seed_vcf)
+    // Apply the same cohort seed VCF to each sample BAM for per-sample recalibration.
+    ch_joined = ch_markdup.combine(ch_seed_vcf).map { row ->
+        tuple(row[0], row[1], row[2], row[4], row[5])
+    }
     ch_with_ref = ch_joined.combine(ch_ref).map { row -> tuple(row[0], row[1], row[2], row[3], row[4], row[5]) }
     GATK_BQSR_PROCESS(ch_with_ref)
 

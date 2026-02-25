@@ -1,7 +1,7 @@
 process BWAMEM2_INDEX_PROCESS {
     tag "bwamem2_index:${ref_fa.baseName}"
     container "${params.sif}"
-    cpus params.bwamem2_cpus
+    cpus { (params.bwamem2_cpus ?: params.threads ?: 1) as Integer }
     publishDir 'results/03_align/index', mode: 'copy'
 
     input:

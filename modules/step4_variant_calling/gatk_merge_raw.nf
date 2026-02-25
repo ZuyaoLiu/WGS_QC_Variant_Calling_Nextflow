@@ -1,7 +1,7 @@
 process GATK_MERGE_RAW_PROCESS {
     tag "${sample_id}"
     container "${params.sif}"
-    cpus params.gatk_cpus
+    cpus { (params.gatk_cpus ?: params.threads ?: 1) as Integer }
     publishDir 'results/05_variant_calling/gatk/genotypegvcfs', mode: 'copy'
 
     input:

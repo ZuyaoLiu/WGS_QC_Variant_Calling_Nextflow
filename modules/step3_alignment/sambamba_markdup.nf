@@ -1,7 +1,7 @@
 process SAMBAMBA_MARKDUP_PROCESS {
     tag "${sample_id}"
     container "${params.sif}"
-    cpus params.sambamba_cpus
+    cpus { (params.sambamba_cpus ?: params.threads ?: 1) as Integer }
     publishDir 'results/04_markdup', mode: 'copy'
 
     input:

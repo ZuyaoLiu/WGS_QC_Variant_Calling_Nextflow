@@ -1,7 +1,7 @@
 process GATK_HAPLOTYPECALLER_BY_CHR_PROCESS {
     tag "${sample_id}:${chrom}"
     container "${params.sif}"
-    cpus params.gatk_cpus
+    cpus { (params.gatk_cpus ?: params.threads ?: 1) as Integer }
     publishDir 'results/05_variant_calling/gatk/haplotypecaller/per_chrom', mode: 'copy'
 
     input:
@@ -32,6 +32,7 @@ process GATK_HAPLOTYPECALLER_BY_CHR_PROCESS {
       -O ${sample_id}.${interval_idx}.g.vcf.gz \
       -L ${chrom} \
       -ERC GVCF \
+      ${params.gatk_haplotypecaller_parameters} \
       --sample-name ${sample_id} \
       --native-pair-hmm-threads ${task.cpus}
     """

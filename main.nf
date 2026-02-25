@@ -9,6 +9,18 @@ params.use_bqsr         = params.use_bqsr ?: false
 params.run_step         = params.run_step ?: 'all'
 params.sif              = params.sif ?: 'WGS_Variant_Calling.sif'
 params.fastp_parameters = params.fastp_parameters ?: ''
+params.bwa_parameters = params.bwa_parameters ?: ''
+params.bwamem2_parameters = params.bwamem2_parameters ?: ''
+params.bcftools_mpileup_parameters = params.bcftools_mpileup_parameters ?: ''
+params.bcftools_call_parameters = params.bcftools_call_parameters ?: ''
+params.bcftools_concat_parameters = params.bcftools_concat_parameters ?: ''
+params.gatk_haplotypecaller_parameters = params.gatk_haplotypecaller_parameters ?: ''
+params.gatk_genomicsdbimport_parameters = params.gatk_genomicsdbimport_parameters ?: ''
+params.gatk_genotypegvcfs_parameters = params.gatk_genotypegvcfs_parameters ?: ''
+params.gatk_baserecalibrator_parameters = params.gatk_baserecalibrator_parameters ?: ''
+params.gatk_applybqsr_parameters = params.gatk_applybqsr_parameters ?: ''
+params.gatk_variantfiltration_snp_parameters = params.gatk_variantfiltration_snp_parameters ?: ''
+params.gatk_variantfiltration_indel_parameters = params.gatk_variantfiltration_indel_parameters ?: ''
 params.ref_abs          = params.ref ? file(params.ref).toAbsolutePath().toString() : null
 params.ref_base         = params.ref_abs ? file(params.ref_abs).getName() : null
 
@@ -53,8 +65,18 @@ Execution modes:
   2) Single-step: --run_step Raw_QC|Trimming_QC|Aligning|Calling
 
 Required inputs:
-  --input_dir   Input FASTQ directory
-  --ref         Reference FASTA
+  --input_dir   Input FASTQ directory                          [required]
+  --ref         Reference FASTA                                [required]
+
+Input example:
+  PE input_dir:
+    Aq01_R1.fastq.gz
+    Aq01_R2.fastq.gz
+    Aq02_R1.fastq.gz
+    Aq02_R2.fastq.gz
+  SE input_dir:
+    Aq01.fastq.gz
+    Aq02.fq.gz
 
 Core controls:
   --read_type         SE|PE                                    [default: PE]
@@ -63,7 +85,19 @@ Core controls:
   --run_step          Raw_QC|Trimming_QC|Aligning|Calling|all [default: all]
   --help              Show this help and exit                  [default: false]
   --fastp_parameters  Extra fastp options string               [default: '']
-  --sif               Container image path                     [default: WGS_Variant_Calling.sif]
+  --bwa_parameters    Extra bwa mem options string             [default: '']
+  --bwamem2_parameters Extra bwa-mem2 mem options string       [default: '']
+  --bcftools_mpileup_parameters Extra bcftools mpileup options [default: '']
+  --bcftools_call_parameters Extra bcftools call options        [default: '']
+  --bcftools_concat_parameters Extra bcftools concat options    [default: '']
+  --gatk_haplotypecaller_parameters Extra GATK HaplotypeCaller options [default: '']
+  --gatk_genomicsdbimport_parameters Extra GATK GenomicsDBImport options [default: '']
+  --gatk_genotypegvcfs_parameters Extra GATK GenotypeGVCFs options [default: '']
+  --gatk_baserecalibrator_parameters Extra GATK BaseRecalibrator options [default: '']
+  --gatk_applybqsr_parameters Extra GATK ApplyBQSR options      [default: '']
+  --gatk_variantfiltration_snp_parameters Extra GATK SNP VariantFiltration options [default: '']
+  --gatk_variantfiltration_indel_parameters Extra GATK INDEL VariantFiltration options [default: '']
+  --sif               Container image path                     [default: ${params.sif}]
 
 Thread controls:
   --threads        Global fallback threads             [default: 4]
@@ -74,6 +108,27 @@ Thread controls:
   --sambamba_cpus  sambamba threads (overrides --threads)
   --bcftools_cpus  bcftools threads (overrides --threads)
   --gatk_cpus      GATK threads (overrides --threads)
+
+Profile switching:
+  -profile local      Local executor (default profile behavior)
+  -profile slurm      SLURM scheduler
+  -profile awsbatch   AWS Batch scheduler
+
+SLURM profile params (used with -profile slurm):
+  --slurm_queue        Partition/queue name                      [default: null]
+  --slurm_account      SLURM account                             [default: null]
+  --slurm_qos          SLURM QoS                                 [default: null]
+  --slurm_time         Job walltime (e.g. 24h, 02:00:00)         [default: null]
+  --slurm_constraint   Node constraint                           [default: null]
+  --slurm_extra        Extra sbatch options string               [default: null]
+  --slurm_queue_size   Nextflow submit queue size                [default: null]
+
+AWS Batch profile params (used with -profile awsbatch):
+  --aws_region         AWS region                                [default: us-east-1]
+  --aws_queue          AWS Batch queue                           [default: null]
+  --aws_workdir        S3 work directory                         [default: null]
+  --aws_container      Docker image for AWS Batch                [default: null]
+  --aws_cli_path       Optional aws CLI path                     [default: null]
 
 Workflow steps:
   Raw_QC:
@@ -92,6 +147,9 @@ Output root:
   results/
 
 Examples:
+  nextflow run main.nf -profile local --input_dir data --ref ref.fa --run_step all
+  nextflow run main.nf -profile slurm --input_dir data --ref ref.fa --run_step Calling --caller gatk --slurm_queue cpu --slurm_account my_account --slurm_time 48h
+  nextflow run main.nf -profile awsbatch --input_dir data --ref ref.fa --run_step Calling --caller bcftools --aws_queue my-queue --aws_workdir s3://my-bucket/nf-work --aws_container myrepo/wgs:latest
   nextflow run main.nf --input_dir data --ref ref.fa --read_type PE --run_step Raw_QC
   nextflow run main.nf --input_dir data --ref ref.fa --read_type PE --run_step Trimming_QC --fastp_parameters '--qualified_quality_phred 20 --length_required 50'
   nextflow run main.nf --input_dir data --ref ref.fa --read_type PE --run_step Aligning
@@ -182,6 +240,100 @@ def build_fastp_input_channel() {
     }
 }
 
+// Collect sample IDs from input FASTQ files using the same naming rules.
+def collect_sample_ids_from_input() {
+    def samples = [] as Set
+    if (params.read_type == 'SE') {
+        file(params.input_dir).listFiles()?.each { f ->
+            if (f.name ==~ /.+\.(fastq|fq)\.gz$/) {
+                samples << f.name.replaceFirst(/\.(fastq|fq)\.gz$/, '')
+            }
+        }
+        return samples as List
+    }
+
+    file(params.input_dir).listFiles()?.each { f ->
+        if (f.name ==~ /.+_R1\.(fastq|fq)\.gz$/) {
+            samples << f.name.replaceFirst(/_R1\.(fastq|fq)\.gz$/, '')
+        }
+    }
+    return samples as List
+}
+
+// Check whether Step2 trimmed FASTQ outputs exist for all input samples.
+def has_complete_step2_outputs() {
+    def samples = collect_sample_ids_from_input()
+    if (!samples) return false
+    def step2Dir = file('results/02_fastp_qc/fastp')
+    if (!step2Dir.exists()) return false
+
+    return samples.every { s ->
+        if (params.read_type == 'SE') {
+            file("${step2Dir}/${s}.clean.fastq.gz").exists()
+        } else {
+            file("${step2Dir}/${s}.clean.R1.fastq.gz").exists() &&
+            file("${step2Dir}/${s}.clean.R2.fastq.gz").exists()
+        }
+    }
+}
+
+// Build cleaned reads channel directly from Step2 published outputs.
+def build_clean_reads_from_step2_results() {
+    def samples = collect_sample_ids_from_input()
+    if (!samples) {
+        error "No samples detected from input_dir for Step2 reuse: ${params.input_dir}"
+    }
+    def step2Dir = file('results/02_fastp_qc/fastp')
+
+    def tuples = samples.collect { s ->
+        if (params.read_type == 'SE') {
+            def fq = file("${step2Dir}/${s}.clean.fastq.gz")
+            if (!fq.exists()) error "Missing Step2 output for sample ${s}: ${fq}"
+            tuple(s, fq)
+        } else {
+            def r1 = file("${step2Dir}/${s}.clean.R1.fastq.gz")
+            def r2 = file("${step2Dir}/${s}.clean.R2.fastq.gz")
+            if (!r1.exists() || !r2.exists()) {
+                error "Missing Step2 output for sample ${s}: expected ${r1} and ${r2}"
+            }
+            tuple(s, r1, r2)
+        }
+    }
+    return Channel.from(tuples)
+}
+
+// Check whether Step3 markdup BAM outputs exist for all input samples.
+def has_complete_step3_outputs() {
+    def samples = collect_sample_ids_from_input()
+    if (!samples) return false
+    def step3Dir = file('results/04_markdup')
+    if (!step3Dir.exists()) return false
+
+    return samples.every { s ->
+        file("${step3Dir}/${s}.markdup.bam").exists() &&
+        file("${step3Dir}/${s}.markdup.bam.bai").exists()
+    }
+}
+
+// Build markdup BAM channel directly from Step3 published outputs.
+def build_markdup_from_step3_results() {
+    def samples = collect_sample_ids_from_input()
+    if (!samples) {
+        error "No samples detected from input_dir for Step3 reuse: ${params.input_dir}"
+    }
+    def step3Dir = file('results/04_markdup')
+
+    def tuples = samples.collect { s ->
+        def bam = file("${step3Dir}/${s}.markdup.bam")
+        def bai = file("${step3Dir}/${s}.markdup.bam.bai")
+        if (!bam.exists() || !bai.exists()) {
+            error "Missing Step3 output for sample ${s}: expected ${bam} and ${bai}"
+        }
+        tuple(s, bam, bai)
+    }
+    return Channel.from(tuples)
+}
+
 // Build interval channel (idx, chrom) from reference FASTA headers for per-chrom parallel calling.
 def build_interval_channel() {
     def intervals = []
@@ -269,7 +421,10 @@ workflow {
     if (params.run_step in ['Trimming_QC', 'all']) {
         ch_fastp_input = build_fastp_input_channel()
         if (params.run_step == 'all') {
-            ch_fastp_input = ch_fastp_input.combine(step1_done_signal).map { reads, done -> reads }
+            ch_fastp_input = ch_fastp_input.combine(step1_done_signal).map { row ->
+                def data = row.take(row.size() - 1)
+                tuple(*data)
+            }
         }
 
         trim = FASTP(ch_fastp_input)
@@ -279,14 +434,37 @@ workflow {
     }
 
     if (params.run_step == 'Aligning') {
-        trim = FASTP(build_fastp_input_channel())
-        markdup = run_step3(trim.cleaned_reads)
+        def clean_reads_for_align
+        if (has_complete_step2_outputs()) {
+            log.info "run_step=Aligning: reusing Step2 outputs from results/02_fastp_qc/fastp"
+            clean_reads_for_align = build_clean_reads_from_step2_results()
+        } else {
+            log.info "run_step=Aligning: Step2 outputs incomplete, running FASTP from input_dir"
+            trim = FASTP(build_fastp_input_channel())
+            clean_reads_for_align = trim.cleaned_reads
+        }
+        markdup = run_step3(clean_reads_for_align)
     }
 
     if (params.run_step == 'Calling') {
-        trim = FASTP(build_fastp_input_channel())
-        markdup = run_step3(trim.cleaned_reads)
-        run_step4(markdup.markdup_bam)
+        def markdup_for_calling
+        if (has_complete_step3_outputs()) {
+            log.info "run_step=Calling: reusing Step3 outputs from results/04_markdup"
+            markdup_for_calling = build_markdup_from_step3_results()
+        } else {
+            def clean_reads_for_align
+            if (has_complete_step2_outputs()) {
+                log.info "run_step=Calling: Step3 outputs missing, reusing Step2 outputs for alignment"
+                clean_reads_for_align = build_clean_reads_from_step2_results()
+            } else {
+                log.info "run_step=Calling: Step2/Step3 outputs missing, running FASTP from input_dir"
+                trim = FASTP(build_fastp_input_channel())
+                clean_reads_for_align = trim.cleaned_reads
+            }
+            markdup = run_step3(clean_reads_for_align)
+            markdup_for_calling = markdup.markdup_bam
+        }
+        run_step4(markdup_for_calling)
     }
 
     if (params.run_step == 'all') {

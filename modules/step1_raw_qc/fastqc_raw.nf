@@ -1,7 +1,7 @@
 process FASTQC_RAW_PROCESS {
     tag "${sample_id}:${read_label}"
     container "${params.sif}"
-    cpus params.fastqc_cpus
+    cpus { (params.fastqc_cpus ?: params.threads ?: 1) as Integer }
     publishDir 'results/01_raw_qc/fastqc', mode: 'copy'
 
     input:

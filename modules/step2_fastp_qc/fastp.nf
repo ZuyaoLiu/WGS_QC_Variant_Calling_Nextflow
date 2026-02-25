@@ -1,7 +1,7 @@
 process FASTP_SE_PROCESS {
     tag "${sample_id}:SE"
     container "${params.sif}"
-    cpus params.fastp_cpus
+    cpus { (params.fastp_cpus ?: params.threads ?: 1) as Integer }
     publishDir 'results/02_fastp_qc/fastp', mode: 'copy'
 
     input:
@@ -28,7 +28,7 @@ process FASTP_SE_PROCESS {
 process FASTP_PE_PROCESS {
     tag "${sample_id}:PE"
     container "${params.sif}"
-    cpus params.fastp_cpus
+    cpus { (params.fastp_cpus ?: params.threads ?: 1) as Integer }
     publishDir 'results/02_fastp_qc/fastp', mode: 'copy'
 
     input:

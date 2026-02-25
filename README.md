@@ -1,95 +1,72 @@
 # NGS Variant Calling Nextflow Pipeline
 
-A production-style, containerized, modular **Nextflow DSL2** pipeline for **non-human WGS variant calling**.
+![Nextflow Pipeline Workflow](./Pipeline_figure.png)
 
-This project is designed for strict step-wise execution and reproducibility under:
+A containerized, modular **Nextflow DSL2** pipeline for **non-human WGS variant calling**.
 
 - **Nextflow**: `25.10.4`
-- **Execution runtime**: Apptainer/Singularity
-- **Container image**: `WGS_Variant_Calling.sif`
+- **Runtime**: Apptainer/Singularity
+- **Container image**: `WGS_Variant_Calling.sif` (override with `--sif`)
+- **Main flow**: `Raw_QC -> Trimming_QC -> Aligning -> Calling`
 
-The pipeline follows the required business flow:
+## Quick Start (Read This First)
 
-- `Raw_QC -> Trimming_QC -> Aligning -> Calling`
+1. Check help:
 
-and supports both full-run and single-step modes.
-
-## Key Capabilities
-
-- Strict modular structure by step (`modules/step1_*` ... `modules/step4_*`)
-- Explicit container declaration in every process
-- SE/PE-aware alignment branches
-- Caller-aware variant calling branches (`bcftools` / `gatk`)
-- Optional GATK BQSR path
-- **Per-chromosome/scaffold parallel calling** in Step4, followed by controlled merge
-- Standardized output hierarchy under `results/`
-
-## Repository Structure
-
-```text
-.
-├── main.nf
-├── nextflow.config
-├── modules/
-│   ├── step1_raw_qc/
-│   │   ├── fastqc_raw.nf
-│   │   └── multiqc_raw.nf
-│   ├── step2_fastp_qc/
-│   │   ├── fastp.nf
-│   │   ├── fastqc_post.nf
-│   │   └── multiqc_post.nf
-│   ├── step3_alignment/
-│   │   ├── bwa_index.nf
-│   │   ├── bwa_se.nf
-│   │   ├── bwa_mem2_index.nf
-│   │   ├── bwa_mem2_pe.nf
-│   │   ├── fixmate.nf
-│   │   ├── sort.nf
-│   │   └── sambamba_markdup.nf
-│   └── step4_variant_calling/
-│       ├── bcftools_call.nf
-│       ├── gatk_bqsr.nf
-│       ├── gatk_haplotypecaller.nf
-│       ├── gatk_genomicsdbimport.nf
-│       ├── gatk_genotypegvcfs.nf
-│       ├── gatk_merge_raw.nf
-│       └── gatk_filter.nf
-└── tests/
-    ├── run_smoke_test.sh
-    └── README.md
+```bash
+nextflow run main.nf --help
 ```
 
-## Software Scope (Intentional Constraints)
+2. Run full pipeline locally:
 
-Included only:
+```bash
+nextflow run main.nf \
+  -profile local \
+  --input_dir /data/fastq \
+  --ref /data/ref.fa \
+  --read_type PE \
+  --run_step all \
+  --caller gatk \
+  --use_bqsr false \
+  --threads 8
+```
 
-- FastQC
-- MultiQC
-- fastp
-- bwa
-- bwa-mem2
-- samtools (index/sort/fixmate/faidx helpers)
-- sambamba
-- bcftools
-- GATK
+3. Output root:
 
+- `results/`
+
+## Input Requirements
+
+Required:
+
+- `--input_dir`: directory containing FASTQ files
+- `--ref`: reference FASTA
+
+Sample ID inference:
+
+- PE: strip `_R1.fastq.gz` / `_R2.fastq.gz` or `_R1.fq.gz` / `_R2.fq.gz`
+- SE: strip `.fastq.gz` or `.fq.gz`
+
+Example input naming:
+
+- PE:
+  - `Aq01_R1.fastq.gz`
+  - `Aq01_R2.fastq.gz`
+  - `Aq02_R1.fastq.gz`
+  - `Aq02_R2.fastq.gz`
+- SE:
+  - `Aq01.fastq.gz`
+  - `Aq02.fq.gz`
 
 ## Execution Modes
 
-### 1) Full run
+Full run:
 
 ```bash
 nextflow run main.nf --run_step all ...
 ```
 
-Order:
-
-- Step1 `Raw_QC`
-- Step2 `Trimming_QC`
-- Step3 `Aligning`
-- Step4 `Calling`
-
-### 2) Single-step run
+Single-step run:
 
 ```bash
 nextflow run main.nf --run_step Raw_QC ...
@@ -98,130 +75,113 @@ nextflow run main.nf --run_step Aligning ...
 nextflow run main.nf --run_step Calling ...
 ```
 
-Single-step mode executes only the minimum required upstream logic embedded in that step path.
+Behavior notes:
 
-## Workflow Design Details
+- `Aligning` reuses Step2 outputs in `results/02_fastp_qc/fastp` if complete; otherwise it runs fastp.
+- `Calling` reuses Step3 outputs in `results/04_markdup` if complete; if not, it falls back to Step2 outputs, then to fresh fastp+alignment.
 
-## Step1: Raw_QC
+## Workflow Logic
+
+Step1 `Raw_QC`:
 
 - FastQC on raw FASTQ
-- MultiQC aggregation
+- MultiQC summary
 
-Outputs:
+Step2 `Trimming_QC`:
 
-- `results/01_raw_qc/fastqc/`
-- `results/01_raw_qc/multiqc/`
+- fastp
+- FastQC on cleaned FASTQ
+- MultiQC summary
 
-## Step2: Trimming_QC
+Step3 `Aligning`:
 
-- fastp trimming/QC
-- FastQC on post-fastp FASTQ
-- MultiQC aggregation
+- `SE`: `bwa index -> bwa mem -> samtools sort -> sambamba markdup`
+- `PE`: `bwa-mem2 index -> bwa-mem2 mem -> samtools fixmate -> samtools sort -> sambamba markdup`
 
-Outputs:
+Step4 `Calling` (parallel by chromosome/scaffold from FASTA headers):
 
-- `results/02_fastp_qc/fastp/`
-- `results/02_fastp_qc/fastqc/`
-- `results/02_fastp_qc/multiqc/`
+- `caller=bcftools`:
+  - per-interval calling
+  - merge into one final multisample cohort VCF
+- `caller=gatk --use_bqsr false`:
+  - HaplotypeCaller (per interval)
+  - GenomicsDBImport (per interval)
+  - GenotypeGVCFs (per interval)
+  - merge raw VCFs
+  - SNP/INDEL hard filtering
+  - merge filtered SNP+INDEL
+- `caller=gatk --use_bqsr true`:
+  - bcftools seed call (per interval) + merge
+  - high-confidence SNP extraction for BQSR known-sites
+  - BaseRecalibrator + ApplyBQSR on full BAM
+  - then same GATK per-interval chain and final filtering as above
 
-## Step3: Aligning
+## Results Structure
 
-Branching by `--read_type`:
+```text
+results/
+├── 01_raw_qc/
+│   ├── fastqc/
+│   └── multiqc/
+├── 02_fastp_qc/
+│   ├── fastp/
+│   ├── fastqc/
+│   └── multiqc/
+├── 03_align/
+├── 04_markdup/
+└── 05_variant_calling/
+    ├── bcftools/
+    │   ├── per_chrom/
+    │   └── cohort.bcftools.vcf.gz(.tbi)
+    └── gatk/
+        ├── bqsr/
+        ├── haplotypecaller/per_chrom/
+        ├── genomicsdb/per_chrom/
+        ├── genotypegvcfs/per_chrom/
+        ├── genotypegvcfs/cohort.gatk.raw.vcf.gz(.tbi)
+        └── filter/cohort.gatk.filtered.vcf.gz(.tbi)
+```
 
-- `SE`:
-  - `bwa index`
-  - `bwa mem`
-  - `samtools sort`
-- `PE`:
-  - `bwa-mem2 index`
-  - `bwa-mem2 mem`
-  - `samtools fixmate`
-  - `samtools sort`
+Typical filenames:
 
-Common merge point:
-
-- `sambamba markdup`
-
-Outputs:
-
-- `results/03_align/`
-- `results/04_markdup/`
-
-## Step4: Calling
-
-Branching by `--caller`:
-
-### A) `bcftools`
-
-Per chromosome/scaffold parallelism:
-
-- build intervals from reference FASTA headers (`>chr`, `>scaffold`, etc.)
-- run per-interval bcftools calling in parallel
-- merge per-interval VCFs into one final sample VCF
-
-Outputs:
-
-- per-interval: `results/05_variant_calling/bcftools/per_chrom/`
-- merged: `results/05_variant_calling/bcftools/SAMPLE.bcftools.vcf.gz`
-
-### B) `gatk`
-
-#### `--use_bqsr false`
-
-- HaplotypeCaller per interval (parallel)
-- GenomicsDBImport per interval (parallel)
-- GenotypeGVCFs per interval (parallel)
-- merge per-interval raw VCF -> one merged raw VCF
-- split SNP/INDEL hard filtering
-- merge filtered SNP + INDEL into final VCF
-
-#### `--use_bqsr true`
-
-- per-interval bcftools seed call + merge seed VCF
-- high-confidence SNP extraction
-- **BaseRecalibrator + ApplyBQSR on full sample BAM (single whole-genome recalibration step)**
-- then same per-interval GATK calling chain as above
-- final merged filtered VCF
-
-GATK outputs:
-
-- per-interval intermediates:
-  - `results/05_variant_calling/gatk/haplotypecaller/per_chrom/`
-  - `results/05_variant_calling/gatk/genomicsdb/per_chrom/`
-  - `results/05_variant_calling/gatk/genotypegvcfs/per_chrom/`
-- merged raw VCF:
-  - `results/05_variant_calling/gatk/genotypegvcfs/SAMPLE.gatk.raw.vcf.gz`
-- final filtered VCF:
-  - `results/05_variant_calling/gatk/filter/SAMPLE.gatk.filtered.vcf.gz`
-
-## Input Naming Rules
-
-Sample ID inference:
-
-- PE: strip `_R1.fastq.gz` / `_R2.fastq.gz` or `_R1.fq.gz` / `_R2.fq.gz`
-- SE: strip `.fastq.gz` or `.fq.gz`
+- `SAMPLE.sorted.bam`
+- `SAMPLE.markdup.bam`
+- `cohort.bcftools.vcf.gz`
+- `cohort.gatk.filtered.vcf.gz`
 
 ## Parameters
 
-## Required
-
-- `--input_dir`: FASTQ directory
-- `--ref`: reference FASTA
-
-## Core control
+Core controls:
 
 - `--run_step`: `Raw_QC|Trimming_QC|Aligning|Calling|all` (default: `all`)
 - `--read_type`: `SE|PE` (default: `PE`)
 - `--caller`: `bcftools|gatk` (default: `bcftools`)
 - `--use_bqsr`: `true|false` (default: `false`)
-- `--fastp_parameters`: extra fastp parameter string
 - `--help`: print help and exit
 
-## Container
+Extra tool args:
 
-- `--sif`: container image path (default: `WGS_Variant_Calling.sif`)
+- `--fastp_parameters`
+- `--bwa_parameters`
+- `--bwamem2_parameters`
+- `--bcftools_mpileup_parameters`
+- `--bcftools_call_parameters`
+- `--bcftools_concat_parameters`
+- `--gatk_haplotypecaller_parameters`
+- `--gatk_genomicsdbimport_parameters`
+- `--gatk_genotypegvcfs_parameters`
+- `--gatk_baserecalibrator_parameters`
+- `--gatk_applybqsr_parameters`
+- `--gatk_variantfiltration_snp_parameters`
+- `--gatk_variantfiltration_indel_parameters`
 
-## Resource controls
+Note: `--bcftools_*_parameters` affect both Step4 `caller=bcftools` and the BQSR seed-calling path under `caller=gatk --use_bqsr true`.
+
+Container:
+
+- `--sif`: container image path
+
+Resource controls:
 
 - `--threads`: global fallback threads (default: `4`)
 - Tool-specific overrides:
@@ -233,67 +193,116 @@ Sample ID inference:
   - `--bcftools_cpus`
   - `--gatk_cpus`
 
+## Profile Switching
+
+Select executor profile with `-profile`:
+
+- `local`: local execution
+- `slurm`: SLURM scheduler
+- `awsbatch`: AWS Batch
+
+Example:
+
+```bash
+nextflow run main.nf -profile local ...
+nextflow run main.nf -profile slurm ...
+nextflow run main.nf -profile awsbatch ...
+```
+
+SLURM parameters (`-profile slurm`):
+
+- `--slurm_queue`
+- `--slurm_account`
+- `--slurm_qos`
+- `--slurm_time`
+- `--slurm_constraint`
+- `--slurm_extra` (default includes memory request)
+- `--slurm_queue_size`
+
+AWS Batch parameters (`-profile awsbatch`):
+
+- `--aws_region` (default: `us-east-1`)
+- `--aws_queue`
+- `--aws_workdir`
+- `--aws_container`
+- `--aws_cli_path`
+
 ## Typical Commands
 
-## Print help
-
-```bash
-nextflow run main.nf --help
-```
-
-## Full pipeline
+Calling only with bcftools:
 
 ```bash
 nextflow run main.nf \
+  -profile local \
   --input_dir /data/fastq \
   --ref /data/ref.fa \
-  --read_type PE \
-  --run_step all \
-  --caller gatk \
-  --use_bqsr false \
-  --threads 8 \
-  --sif WGS_Variant_Calling.sif
-```
-
-## Calling only (bcftools)
-
-```bash
-nextflow run main.nf \
-  --input_dir /data/fastq \
-  --ref /data/ref.fa \
-  --read_type PE \
   --run_step Calling \
   --caller bcftools \
   --threads 4
 ```
 
-## Calling only (gatk + BQSR)
+Calling only with GATK + BQSR:
 
 ```bash
 nextflow run main.nf \
+  -profile local \
   --input_dir /data/fastq \
   --ref /data/ref.fa \
-  --read_type PE \
   --run_step Calling \
   --caller gatk \
   --use_bqsr true \
   --threads 4
 ```
 
+SLURM example:
+
+```bash
+nextflow run main.nf \
+  -profile slurm \
+  --input_dir /data/fastq \
+  --ref /data/ref.fa \
+  --run_step Calling \
+  --caller gatk \
+  --use_bqsr true \
+  --slurm_queue cpu \
+  --slurm_account my_account \
+  --slurm_time 48h \
+  --threads 8
+```
+
+AWS Batch example:
+
+```bash
+nextflow run main.nf \
+  -profile awsbatch \
+  --input_dir /data/fastq \
+  --ref /data/ref.fa \
+  --run_step Calling \
+  --caller bcftools \
+  --aws_queue my-queue \
+  --aws_workdir s3://my-bucket/nf-work \
+  --aws_container 123456789012.dkr.ecr.us-east-1.amazonaws.com/wgs:latest \
+  --aws_region us-east-1 \
+  --threads 4
+```
+
+## Software Scope (Intentional Constraints)
+
+Included only:
+
+- FastQC
+- MultiQC
+- fastp
+- bwa
+- bwa-mem2
+- samtools
+- sambamba
+- bcftools
+- GATK
 
 
-## Operational Notes
+## Reproducibility Notes
 
-- The pipeline parses chromosome/scaffold names directly from FASTA headers.
-- Step4 parallelism increases process count; on restricted systems, use conservative settings:
-  - `--threads 1`
-  - low scheduler parallelism (if configured externally)
-- Some GATK subcommands can hit native-thread limits on tightly restricted nodes; the current implementation applies conservative Java/thread environment options in critical processes.
-
-## Reproducibility
-
-- All processes are containerized via `container "${params.sif}"`.
-- Process reports/traces/timeline/DAG are enabled in `nextflow.config` under `pipeline_info/`.
-- Work directory defaults to `work/`.
-
-
+- Every process declares `container`.
+- Workflow report/trace/timeline/DAG are written under `pipeline_info/`.
+- Intermediate task files are under `work/`.

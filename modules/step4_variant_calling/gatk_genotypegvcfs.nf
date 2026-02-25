@@ -1,14 +1,14 @@
 process GATK_GENOTYPEGVCFS_BY_CHR_PROCESS {
-    tag "${sample_id}:${chrom}"
+    tag "cohort:${chrom}"
     container "${params.sif}"
-    cpus params.gatk_cpus
+    cpus { (params.gatk_cpus ?: params.threads ?: 1) as Integer }
     publishDir 'results/05_variant_calling/gatk/genotypegvcfs/per_chrom', mode: 'copy'
 
     input:
-    tuple val(sample_id), val(interval_idx), val(chrom), path(genomicsdb_dir), path(ref_fa)
+    tuple val(interval_idx), val(chrom), path(genomicsdb_dir), path(ref_fa)
 
     output:
-    tuple val(sample_id), val(interval_idx), val(chrom), path("${sample_id}.${interval_idx}.gatk.raw.vcf.gz"), path("${sample_id}.${interval_idx}.gatk.raw.vcf.gz.tbi"), emit: raw_vcf_per_chr
+    tuple val('cohort'), val(interval_idx), val(chrom), path("cohort.${interval_idx}.gatk.raw.vcf.gz"), path("cohort.${interval_idx}.gatk.raw.vcf.gz.tbi"), emit: raw_vcf_per_chr
 
     script:
     """
@@ -29,9 +29,10 @@ process GATK_GENOTYPEGVCFS_BY_CHR_PROCESS {
     gatk GenotypeGVCFs \
       -R ${ref_fa} \
       -V gendb://\$(basename ${genomicsdb_dir}) \
-      -O ${sample_id}.${interval_idx}.gatk.raw.vcf.gz
+      ${params.gatk_genotypegvcfs_parameters} \
+      -O cohort.${interval_idx}.gatk.raw.vcf.gz
 
-    tabix -f -p vcf ${sample_id}.${interval_idx}.gatk.raw.vcf.gz
+    tabix -f -p vcf cohort.${interval_idx}.gatk.raw.vcf.gz
     """
 }
 
@@ -41,7 +42,7 @@ workflow GATK_GENOTYPEGVCFS {
     ch_ref
 
     main:
-    ch_input = ch_gendb.combine(ch_ref).map { row -> tuple(row[0], row[1], row[2], row[3], row[4]) }
+    ch_input = ch_gendb.combine(ch_ref).map { row -> tuple(row[0], row[1], row[2], row[3]) }
     GATK_GENOTYPEGVCFS_BY_CHR_PROCESS(ch_input)
 
     emit:
