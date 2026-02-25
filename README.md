@@ -6,10 +6,10 @@ A containerized, modular **Nextflow DSL2** pipeline for **non-human WGS variant 
 
 - **Nextflow**: `25.10.4`
 - **Runtime**: Apptainer/Singularity
-- **Container image**: `WGS_Variant_Calling.sif` (override with `--sif`)
+- **Container image**: `WGS_Variant_Calling.sif` (available in Release)
 - **Main flow**: `Raw_QC -> Trimming_QC -> Aligning -> Calling`
 
-## Quick Start (Read This First)
+## Quick Start 
 
 1. Check help:
 
