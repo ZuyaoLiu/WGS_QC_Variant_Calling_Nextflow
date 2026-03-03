@@ -41,6 +41,7 @@ Required:
 
 - `--input_dir`: directory containing FASTQ files
 - `--ref`: reference FASTA
+⚠️ **Note:** Reference sequence headers must not use the `chr:start-end` naming pattern (e.g. `>chrXIX:0-20580295`), as this conflicts with `bcftools -r` region parsing and will cause runtime errors.
 
 Sample ID inference:
 
