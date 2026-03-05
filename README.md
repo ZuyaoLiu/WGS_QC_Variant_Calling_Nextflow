@@ -51,19 +51,19 @@ Sample ID inference:
 Example input naming:
 
 - PE:
-  - `Aq00_R1.fastq`
-  - `Aq00_R2.fastq`
-  - `Aq01_R1.fastq.gz`
-  - `Aq01_R2.fastq.gz`
-  - `Aq02_R1.fq`
-  - `Aq02_R2.fq`
-  - `Aq03_R1.fq.gz`
-  - `Aq03_R2.fq.gz`
+  - `Sample00_R1.fastq`
+  - `Sample00_R2.fastq`
+  - `Sample01_R1.fastq.gz`
+  - `Sample01_R2.fastq.gz`
+  - `Sample02_R1.fq`
+  - `Sample02_R2.fq`
+  - `Sample03_R1.fq.gz`
+  - `Sample03_R2.fq.gz`
 - SE:
-  - `Aq00.fastq`
-  - `Aq01.fastq.gz`
-  - `Aq02.fq`
-  - `Aq03.fq.gz`
+  - `Sample00.fastq`
+  - `Sample01.fastq.gz`
+  - `Sample02.fq`
+  - `Sample03.fq.gz`
 
 ## Execution Modes
 
