@@ -186,23 +186,31 @@ def validate_params() {
 def build_raw_fastq_channel() {
     if (params.read_type == 'SE') {
         return Channel
-            .fromPath("${params.input_dir}/*.fastq.gz")
+            .fromPath("${params.input_dir}/*.fastq")
+            .mix(Channel.fromPath("${params.input_dir}/*.fastq.gz"))
+            .mix(Channel.fromPath("${params.input_dir}/*.fq"))
             .mix(Channel.fromPath("${params.input_dir}/*.fq.gz"))
             .ifEmpty { error "No SE FASTQ files found under: ${params.input_dir}" }
             .map { fq ->
-                def sample = fq.baseName.replaceFirst(/\.(fastq|fq)$/, '')
+                def sample = fq.name.replaceFirst(/\.(fastq|fq)(\.gz)?$/, '')
                 tuple(sample, 'SE', fq)
             }
     }
 
     def chR1 = Channel
-        .fromPath("${params.input_dir}/*_R1.fastq.gz")
+        .fromPath("${params.input_dir}/*_R1.fastq")
+        .mix(Channel.fromPath("${params.input_dir}/*_R1.fastq.gz"))
+        .mix(Channel.fromPath("${params.input_dir}/*_R1.fq"))
         .mix(Channel.fromPath("${params.input_dir}/*_R1.fq.gz"))
         .ifEmpty { error "No PE R1 FASTQ files found under: ${params.input_dir}" }
 
     return chR1.flatMap { r1 ->
-        def sample = r1.name.replaceFirst(/_R1\.(fastq|fq)\.gz$/, '')
-        def ext = r1.name.endsWith('.fastq.gz') ? 'fastq.gz' : 'fq.gz'
+        def matcher = (r1.name =~ /^(.+)_R1\.(fastq|fq)(\.gz)?$/)
+        if (!matcher.matches()) {
+            error "Unsupported PE R1 filename pattern: ${r1.name}"
+        }
+        def sample = matcher[0][1]
+        def ext = "${matcher[0][2]}${matcher[0][3] ?: ''}"
         def r2 = file("${r1.parent}/${sample}_R2.${ext}")
         if (!r2.exists()) {
             error "Missing R2 for sample ${sample}: expected ${r2}"
@@ -215,23 +223,31 @@ def build_raw_fastq_channel() {
 def build_fastp_input_channel() {
     if (params.read_type == 'SE') {
         return Channel
-            .fromPath("${params.input_dir}/*.fastq.gz")
+            .fromPath("${params.input_dir}/*.fastq")
+            .mix(Channel.fromPath("${params.input_dir}/*.fastq.gz"))
+            .mix(Channel.fromPath("${params.input_dir}/*.fq"))
             .mix(Channel.fromPath("${params.input_dir}/*.fq.gz"))
             .ifEmpty { error "No SE FASTQ files found under: ${params.input_dir}" }
             .map { fq ->
-                def sample = fq.baseName.replaceFirst(/\.(fastq|fq)$/, '')
+                def sample = fq.name.replaceFirst(/\.(fastq|fq)(\.gz)?$/, '')
                 tuple(sample, fq)
             }
     }
 
     def chR1 = Channel
-        .fromPath("${params.input_dir}/*_R1.fastq.gz")
+        .fromPath("${params.input_dir}/*_R1.fastq")
+        .mix(Channel.fromPath("${params.input_dir}/*_R1.fastq.gz"))
+        .mix(Channel.fromPath("${params.input_dir}/*_R1.fq"))
         .mix(Channel.fromPath("${params.input_dir}/*_R1.fq.gz"))
         .ifEmpty { error "No PE R1 FASTQ files found under: ${params.input_dir}" }
 
     return chR1.map { r1 ->
-        def sample = r1.name.replaceFirst(/_R1\.(fastq|fq)\.gz$/, '')
-        def ext = r1.name.endsWith('.fastq.gz') ? 'fastq.gz' : 'fq.gz'
+        def matcher = (r1.name =~ /^(.+)_R1\.(fastq|fq)(\.gz)?$/)
+        if (!matcher.matches()) {
+            error "Unsupported PE R1 filename pattern: ${r1.name}"
+        }
+        def sample = matcher[0][1]
+        def ext = "${matcher[0][2]}${matcher[0][3] ?: ''}"
         def r2 = file("${r1.parent}/${sample}_R2.${ext}")
         if (!r2.exists()) {
             error "Missing R2 for sample ${sample}: expected ${r2}"
@@ -245,16 +261,16 @@ def collect_sample_ids_from_input() {
     def samples = [] as Set
     if (params.read_type == 'SE') {
         file(params.input_dir).listFiles()?.each { f ->
-            if (f.name ==~ /.+\.(fastq|fq)\.gz$/) {
-                samples << f.name.replaceFirst(/\.(fastq|fq)\.gz$/, '')
+            if (f.name ==~ /.+\.(fastq|fq)(\.gz)?$/) {
+                samples << f.name.replaceFirst(/\.(fastq|fq)(\.gz)?$/, '')
             }
         }
         return samples as List
     }
 
     file(params.input_dir).listFiles()?.each { f ->
-        if (f.name ==~ /.+_R1\.(fastq|fq)\.gz$/) {
-            samples << f.name.replaceFirst(/_R1\.(fastq|fq)\.gz$/, '')
+        if (f.name ==~ /.+_R1\.(fastq|fq)(\.gz)?$/) {
+            samples << f.name.replaceFirst(/_R1\.(fastq|fq)(\.gz)?$/, '')
         }
     }
     return samples as List

@@ -45,19 +45,25 @@ Required:
 
 Sample ID inference:
 
-- PE: strip `_R1.fastq.gz` / `_R2.fastq.gz` or `_R1.fq.gz` / `_R2.fq.gz`
-- SE: strip `.fastq.gz` or `.fq.gz`
+- PE: strip `_R1.fastq` / `_R2.fastq`, `_R1.fastq.gz` / `_R2.fastq.gz`, `_R1.fq` / `_R2.fq`, or `_R1.fq.gz` / `_R2.fq.gz`
+- SE: strip `.fastq`, `.fastq.gz`, `.fq`, or `.fq.gz`
 
 Example input naming:
 
 - PE:
+  - `Aq00_R1.fastq`
+  - `Aq00_R2.fastq`
   - `Aq01_R1.fastq.gz`
   - `Aq01_R2.fastq.gz`
-  - `Aq02_R1.fastq.gz`
-  - `Aq02_R2.fastq.gz`
+  - `Aq02_R1.fq`
+  - `Aq02_R2.fq`
+  - `Aq03_R1.fq.gz`
+  - `Aq03_R2.fq.gz`
 - SE:
+  - `Aq00.fastq`
   - `Aq01.fastq.gz`
-  - `Aq02.fq.gz`
+  - `Aq02.fq`
+  - `Aq03.fq.gz`
 
 ## Execution Modes
 
