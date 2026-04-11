@@ -1,7 +1,6 @@
 process BCFTOOLS_CALL_BY_CHR_PROCESS {
     tag "${callset_id}:${chrom}"
     container "${params.sif}"
-    cpus { (params.bcftools_cpus ?: params.threads ?: 1) as Integer }
     publishDir 'results/04_variant_calling/bcftools/per_chrom', mode: 'move'
 
     input:
@@ -39,7 +38,6 @@ process BCFTOOLS_CALL_BY_CHR_PROCESS {
 process BCFTOOLS_MERGE_PROCESS {
     tag "${callset_id}"
     container "${params.sif}"
-    cpus { (params.bcftools_cpus ?: params.threads ?: 1) as Integer }
     publishDir 'results/04_variant_calling/bcftools', mode: 'move'
 
     input:

@@ -1,7 +1,6 @@
 process BWA_INDEX_PROCESS {
     tag "bwa_index:${ref_fa.baseName}"
     container "${params.sif}"
-    cpus { (params.bwa_cpus ?: params.threads ?: 1) as Integer }
 
     input:
     path ref_fa

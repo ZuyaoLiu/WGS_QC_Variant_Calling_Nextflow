@@ -25,3 +25,8 @@ Dataset notes:
 - target depth per sample: about `20x`
 
 Run future tests from `test_run/run/`.
+
+Scheduler notes:
+
+- Use `-profile local` for local smoke tests.
+- If you want to test with `-profile slurm` or `-profile awsbatch`, edit the scheduler defaults in `nextflow.config` first.

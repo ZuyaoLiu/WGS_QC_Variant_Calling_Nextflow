@@ -1,7 +1,6 @@
 process GATK_BQSR_PROCESS {
     tag "${sample_id}"
     container "${params.sif}"
-    cpus { (params.gatk_cpus ?: params.threads ?: 1) as Integer }
     publishDir 'results/04_variant_calling/gatk/bqsr', mode: 'move'
 
     input:

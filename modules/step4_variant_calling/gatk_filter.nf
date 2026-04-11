@@ -1,7 +1,6 @@
 process GATK_FILTER_PROCESS {
     tag "${callset_id}"
     container "${params.sif}"
-    cpus { (params.gatk_cpus ?: params.threads ?: 1) as Integer }
     publishDir 'results/04_variant_calling/gatk/filter', mode: 'move'
 
     input:
