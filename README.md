@@ -9,6 +9,13 @@ A containerized, modular **Nextflow DSL2** pipeline for **non-human WGS variant 
 - **Container image**: `WGS_Variant_Calling.sif` (available in Release)
 - **Main flow**: `Raw_QC -> Trimming_QC -> Aligning -> Calling`
 
+Scheduler settings are now managed directly in [nextflow.config](WGS_QC_Variant_Calling_Nextflow/nextflow.config:1).
+
+- Use the `slurm` profile defaults in `nextflow.config` to control global queue, cpu, memory, time, and cluster options.
+- Use `process { withName: 'PROCESS_NAME' { ... } }` blocks in `nextflow.config` to override resources for individual steps.
+- Use the `awsbatch` profile defaults in `nextflow.config` to set AWS region, Batch queue, container image, and S3 work directory.
+
+
 ## Quick Start 
 
 1. Check help:
@@ -212,11 +219,7 @@ nextflow run ../../main.nf -profile slurm --input_dir ../data --ref ../data/sim_
 nextflow run ../../main.nf -profile awsbatch --input_dir ../data --ref ../data/sim_ref_100kb.fa ...
 ```
 
-Scheduler settings are now managed directly in [nextflow.config](/scratch/zuyao_20260402/vcf_nextflow/2_nextflow/WGS_QC_Variant_Calling_Nextflow/nextflow.config:1).
 
-- Use the `slurm` profile defaults in `nextflow.config` to control global queue, cpu, memory, time, and cluster options.
-- Use `process { withName: 'PROCESS_NAME' { ... } }` blocks in `nextflow.config` to override resources for individual steps.
-- Use the `awsbatch` profile defaults in `nextflow.config` to set AWS region, Batch queue, container image, and S3 work directory.
 
 ## Typical Commands
 
