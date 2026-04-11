@@ -2,7 +2,7 @@ process SAMBAMBA_MARKDUP_PROCESS {
     tag "${sample_id}"
     container "${params.sif}"
     cpus { (params.sambamba_cpus ?: params.threads ?: 1) as Integer }
-    publishDir 'results/04_markdup', mode: 'copy'
+    publishDir 'results/03_markdup', mode: 'move'
 
     input:
     tuple val(sample_id), path(sorted_bam)
@@ -25,5 +25,11 @@ workflow SAMBAMBA_MARKDUP {
     SAMBAMBA_MARKDUP_PROCESS(ch_input)
 
     emit:
-    markdup_bam = SAMBAMBA_MARKDUP_PROCESS.out.markdup
+    markdup_bam = SAMBAMBA_MARKDUP_PROCESS.out.markdup.map { sample_id, bam, bai ->
+        tuple(
+            sample_id,
+            file("results/03_markdup/${bam.name}"),
+            file("results/03_markdup/${bai.name}")
+        )
+    }
 }

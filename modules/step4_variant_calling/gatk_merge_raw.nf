@@ -2,7 +2,7 @@ process GATK_MERGE_RAW_PROCESS {
     tag "${sample_id}"
     container "${params.sif}"
     cpus { (params.gatk_cpus ?: params.threads ?: 1) as Integer }
-    publishDir 'results/05_variant_calling/gatk/genotypegvcfs', mode: 'copy'
+    publishDir 'results/04_variant_calling/gatk/genotypegvcfs', mode: 'move'
 
     input:
     tuple val(sample_id), path(raw_vcf_files), path(raw_vcf_tbis)
@@ -36,5 +36,11 @@ workflow GATK_MERGE_RAW {
     GATK_MERGE_RAW_PROCESS(ch_for_merge)
 
     emit:
-    raw_merged = GATK_MERGE_RAW_PROCESS.out.raw_merged
+    raw_merged = GATK_MERGE_RAW_PROCESS.out.raw_merged.map { sample_id, raw_vcf, raw_tbi ->
+        tuple(
+            sample_id,
+            file("results/04_variant_calling/gatk/genotypegvcfs/${raw_vcf.name}"),
+            file("results/04_variant_calling/gatk/genotypegvcfs/${raw_tbi.name}")
+        )
+    }
 }

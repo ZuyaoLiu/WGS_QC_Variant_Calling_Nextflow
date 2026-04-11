@@ -2,7 +2,7 @@ process BCFTOOLS_CALL_BY_CHR_PROCESS {
     tag "${callset_id}:${chrom}"
     container "${params.sif}"
     cpus { (params.bcftools_cpus ?: params.threads ?: 1) as Integer }
-    publishDir 'results/05_variant_calling/bcftools/per_chrom', mode: 'copy'
+    publishDir 'results/04_variant_calling/bcftools/per_chrom', mode: 'move'
 
     input:
     tuple val(callset_id), path(markdup_bams), path(markdup_bais), path(ref_fa), val(interval_idx), val(chrom)
@@ -24,12 +24,13 @@ process BCFTOOLS_CALL_BY_CHR_PROCESS {
 
     bcftools mpileup \
       --threads ${task.cpus} \
+      -q 20 -a DP,AD \
       -Ou \
       ${params.bcftools_mpileup_parameters} \
       -f ${ref_fa} \
       -r ${chrom} \
       ${markdup_bams} \
-      | bcftools call -mv -Oz --threads ${task.cpus} ${params.bcftools_call_parameters} -o ${callset_id}.${interval_idx}.bcftools.vcf.gz
+      | bcftools call -mv -a GQ,GP -Oz --threads ${task.cpus} ${params.bcftools_call_parameters} -o ${callset_id}.${interval_idx}.bcftools.vcf.gz
 
     tabix -f -p vcf ${callset_id}.${interval_idx}.bcftools.vcf.gz
     """
@@ -39,7 +40,7 @@ process BCFTOOLS_MERGE_PROCESS {
     tag "${callset_id}"
     container "${params.sif}"
     cpus { (params.bcftools_cpus ?: params.threads ?: 1) as Integer }
-    publishDir 'results/05_variant_calling/bcftools', mode: 'copy'
+    publishDir 'results/04_variant_calling/bcftools', mode: 'move'
 
     input:
     tuple val(callset_id), path(vcf_files), path(vcf_tbis)
@@ -78,13 +79,29 @@ workflow BCFTOOLS_CALL {
 
     BCFTOOLS_CALL_BY_CHR_PROCESS(ch_input)
 
-    ch_for_merge = BCFTOOLS_CALL_BY_CHR_PROCESS.out.per_chr
+    ch_per_chr = BCFTOOLS_CALL_BY_CHR_PROCESS.out.per_chr.map { callset_id, interval_idx, chrom, vcf, tbi ->
+        tuple(
+            callset_id,
+            interval_idx,
+            chrom,
+            file("results/04_variant_calling/bcftools/per_chrom/${vcf.name}"),
+            file("results/04_variant_calling/bcftools/per_chrom/${tbi.name}")
+        )
+    }
+
+    ch_for_merge = ch_per_chr
         .map { callset_id, interval_idx, chrom, vcf, tbi -> tuple(callset_id, vcf, tbi) }
         .groupTuple()
 
     BCFTOOLS_MERGE_PROCESS(ch_for_merge)
 
     emit:
-    bcf_vcf = BCFTOOLS_MERGE_PROCESS.out.merged
-    bcf_per_chr = BCFTOOLS_CALL_BY_CHR_PROCESS.out.per_chr
+    bcf_vcf = BCFTOOLS_MERGE_PROCESS.out.merged.map { callset_id, vcf, tbi ->
+        tuple(
+            callset_id,
+            file("results/04_variant_calling/bcftools/${vcf.name}"),
+            file("results/04_variant_calling/bcftools/${tbi.name}")
+        )
+    }
+    bcf_per_chr = ch_per_chr
 }

@@ -2,7 +2,6 @@ process BWAMEM2_PE_PROCESS {
     tag "${sample_id}"
     container "${params.sif}"
     cpus { (params.bwamem2_cpus ?: params.threads ?: 1) as Integer }
-    publishDir 'results/03_align', mode: 'copy'
 
     input:
     tuple val(sample_id), path(r1), path(r2)

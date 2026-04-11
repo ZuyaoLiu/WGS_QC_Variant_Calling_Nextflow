@@ -2,7 +2,7 @@ process FASTQC_POST_PROCESS {
     tag "${sample_id}:${read_label}"
     container "${params.sif}"
     cpus { (params.fastqc_cpus ?: params.threads ?: 1) as Integer }
-    publishDir 'results/02_fastp_qc/fastqc', mode: 'copy'
+    publishDir 'results/02_fastp_qc/fastqc', mode: 'move'
 
     input:
     tuple val(sample_id), val(read_label), path(fq)
@@ -24,5 +24,12 @@ workflow FASTQC_POST {
     FASTQC_POST_PROCESS(ch_fastq)
 
     emit:
-    fastqc_reports = FASTQC_POST_PROCESS.out.qc
+    fastqc_reports = FASTQC_POST_PROCESS.out.qc.map { sample_id, read_label, zip_file, html_file ->
+        tuple(
+            sample_id,
+            read_label,
+            file("results/02_fastp_qc/fastqc/${zip_file.name}"),
+            file("results/02_fastp_qc/fastqc/${html_file.name}")
+        )
+    }
 }

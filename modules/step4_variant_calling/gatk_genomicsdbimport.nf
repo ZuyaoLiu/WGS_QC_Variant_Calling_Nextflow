@@ -2,7 +2,7 @@ process GATK_GENOMICSDBIMPORT_BY_CHR_PROCESS {
     tag "cohort:${chrom}"
     container "${params.sif}"
     cpus { (params.gatk_cpus ?: params.threads ?: 1) as Integer }
-    publishDir 'results/05_variant_calling/gatk/genomicsdb/per_chrom', mode: 'copy'
+    publishDir 'results/04_variant_calling/gatk/genomicsdb/per_chrom', mode: 'move'
 
     input:
     tuple val(interval_idx), val(chrom), path(gvcf_files), path(gvcf_indexes), path(ref_fa)
@@ -68,5 +68,11 @@ workflow GATK_GENOMICSDBIMPORT {
     GATK_GENOMICSDBIMPORT_BY_CHR_PROCESS(ch_input)
 
     emit:
-    gendb = GATK_GENOMICSDBIMPORT_BY_CHR_PROCESS.out.gendb_per_chr
+    gendb = GATK_GENOMICSDBIMPORT_BY_CHR_PROCESS.out.gendb_per_chr.map { interval_idx, chrom, genomicsdb_dir ->
+        tuple(
+            interval_idx,
+            chrom,
+            file("results/04_variant_calling/gatk/genomicsdb/per_chrom/${genomicsdb_dir.name}")
+        )
+    }
 }

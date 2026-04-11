@@ -2,7 +2,7 @@ process FASTP_SE_PROCESS {
     tag "${sample_id}:SE"
     container "${params.sif}"
     cpus { (params.fastp_cpus ?: params.threads ?: 1) as Integer }
-    publishDir 'results/02_fastp_qc/fastp', mode: 'copy'
+    publishDir 'results/02_fastp_qc/fastp', mode: 'move'
 
     input:
     tuple val(sample_id), path(fq)
@@ -29,7 +29,7 @@ process FASTP_PE_PROCESS {
     tag "${sample_id}:PE"
     container "${params.sif}"
     cpus { (params.fastp_cpus ?: params.threads ?: 1) as Integer }
-    publishDir 'results/02_fastp_qc/fastp', mode: 'copy'
+    publishDir 'results/02_fastp_qc/fastp', mode: 'move'
 
     input:
     tuple val(sample_id), path(r1), path(r2)
@@ -67,8 +67,32 @@ workflow FASTP {
     }
 
     emit:
-    cleaned_reads = params.read_type == 'SE' ? FASTP_SE_PROCESS.out.cleaned_se : FASTP_PE_PROCESS.out.cleaned_pe
-    cleaned_for_qc = params.read_type == 'SE' ? FASTP_SE_PROCESS.out.cleaned_for_qc_se : FASTP_PE_PROCESS.out.cleaned_for_qc_r1.mix(FASTP_PE_PROCESS.out.cleaned_for_qc_r2)
-    fastp_html = params.read_type == 'SE' ? FASTP_SE_PROCESS.out.html : FASTP_PE_PROCESS.out.html
-    fastp_json = params.read_type == 'SE' ? FASTP_SE_PROCESS.out.json : FASTP_PE_PROCESS.out.json
+    cleaned_reads = params.read_type == 'SE'
+        ? FASTP_SE_PROCESS.out.cleaned_se.map { sample_id, fq ->
+            tuple(sample_id, file("results/02_fastp_qc/fastp/${fq.name}"))
+        }
+        : FASTP_PE_PROCESS.out.cleaned_pe.map { sample_id, r1, r2 ->
+            tuple(
+                sample_id,
+                file("results/02_fastp_qc/fastp/${r1.name}"),
+                file("results/02_fastp_qc/fastp/${r2.name}")
+            )
+        }
+
+    cleaned_for_qc = params.read_type == 'SE'
+        ? FASTP_SE_PROCESS.out.cleaned_for_qc_se.map { sample_id, read_label, fq ->
+            tuple(sample_id, read_label, file("results/02_fastp_qc/fastp/${fq.name}"))
+        }
+        : FASTP_PE_PROCESS.out.cleaned_for_qc_r1.map { sample_id, read_label, fq ->
+            tuple(sample_id, read_label, file("results/02_fastp_qc/fastp/${fq.name}"))
+          }.mix(
+            FASTP_PE_PROCESS.out.cleaned_for_qc_r2.map { sample_id, read_label, fq ->
+                tuple(sample_id, read_label, file("results/02_fastp_qc/fastp/${fq.name}"))
+            }
+          )
+
+    fastp_html = (params.read_type == 'SE' ? FASTP_SE_PROCESS.out.html : FASTP_PE_PROCESS.out.html)
+        .map { html_file -> file("results/02_fastp_qc/fastp/${html_file.name}") }
+    fastp_json = (params.read_type == 'SE' ? FASTP_SE_PROCESS.out.json : FASTP_PE_PROCESS.out.json)
+        .map { json_file -> file("results/02_fastp_qc/fastp/${json_file.name}") }
 }

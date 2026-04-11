@@ -2,7 +2,6 @@ process BWA_SE_PROCESS {
     tag "${sample_id}"
     container "${params.sif}"
     cpus { (params.bwa_cpus ?: params.threads ?: 1) as Integer }
-    publishDir 'results/03_align', mode: 'copy'
 
     input:
     tuple val(sample_id), path(fq)

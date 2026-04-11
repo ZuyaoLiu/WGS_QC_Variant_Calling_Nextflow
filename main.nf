@@ -6,6 +6,7 @@ params.ref              = params.ref ?: null
 params.read_type        = params.read_type ?: 'PE'
 params.caller           = params.caller ?: 'bcftools'
 params.use_bqsr         = params.use_bqsr ?: false
+params.bqsr_panel       = params.containsKey('bqsr_panel') ? params.get('bqsr_panel') : null
 params.run_step         = params.run_step ?: 'all'
 params.sif              = params.sif ?: 'WGS_Variant_Calling.sif'
 params.fastp_parameters = params.fastp_parameters ?: ''
@@ -23,6 +24,7 @@ params.gatk_variantfiltration_snp_parameters = params.gatk_variantfiltration_snp
 params.gatk_variantfiltration_indel_parameters = params.gatk_variantfiltration_indel_parameters ?: ''
 params.ref_abs          = params.ref ? file(params.ref).toAbsolutePath().toString() : null
 params.ref_base         = params.ref_abs ? file(params.ref_abs).getName() : null
+params.bqsr_panel_abs   = params.bqsr_panel ? file(params.bqsr_panel).toAbsolutePath().toString() : null
 
 params.threads        = (params.threads ?: 4) as Integer
 params.fastqc_cpus    = (params.fastqc_cpus ?: params.threads) as Integer
@@ -61,8 +63,12 @@ def print_help() {
 NGS Variant Calling Nextflow Pipeline (DSL2, Nextflow 25.10.4)
 
 Execution modes:
-  1) Full pipeline (default): Raw_QC -> Trimming_QC -> Aligning -> Calling
-  2) Single-step: --run_step Raw_QC|Trimming_QC|Aligning|Calling
+  1) Full pipeline (default): --run_step all -> Raw_QC -> Trimming_QC -> Aligning -> Calling
+  2) Start from a specific step and continue to the end:
+     --run_step Raw_QC       -> Raw_QC -> Trimming_QC -> Aligning -> Calling
+     --run_step Trimming_QC  -> Trimming_QC -> Aligning -> Calling
+     --run_step Aligning     -> Aligning -> Calling
+     --run_step Calling      -> Calling
 
 Required inputs:
   --input_dir   Input FASTQ directory                          [required]
@@ -70,18 +76,21 @@ Required inputs:
 
 Input example:
   PE input_dir:
-    Aq01_R1.fastq.gz
-    Aq01_R2.fastq.gz
-    Aq02_R1.fastq.gz
-    Aq02_R2.fastq.gz
+    SimA_R1.fastq.gz
+    SimA_R2.fastq.gz
+    SimB_R1.fastq.gz
+    SimB_R2.fastq.gz
+    SimC_R1.fastq.gz
+    SimC_R2.fastq.gz
   SE input_dir:
-    Aq01.fastq.gz
-    Aq02.fq.gz
+    SimSingleA.fastq.gz
+    SimSingleB.fq.gz
 
 Core controls:
   --read_type         SE|PE                                    [default: PE]
   --caller            bcftools|gatk                            [default: bcftools]
   --use_bqsr          true|false                               [default: false]
+  --bqsr_panel        External known-sites VCF/VCF.GZ for BQSR [default: null]
   --run_step          Raw_QC|Trimming_QC|Aligning|Calling|all [default: all]
   --help              Show this help and exit                  [default: false]
   --fastp_parameters  Extra fastp options string               [default: '']
@@ -141,19 +150,27 @@ Workflow steps:
   Calling (parallel by chromosome/scaffold from reference headers):
     bcftools: per-chrom call -> merge
     gatk(use_bqsr=false): per-chrom HC/GDB/Genotype -> merge raw VCF -> SNP/INDEL hard filter -> merge
-    gatk(use_bqsr=true): per-chrom bcftools seed->merge -> high-conf SNP -> FULL-BAM BQSR -> per-chrom HC/GDB/Genotype -> merge raw VCF -> SNP/INDEL hard filter -> merge
+    gatk(use_bqsr=true): external known-sites panel -> FULL-BAM BQSR -> per-chrom HC/GDB/Genotype -> merge raw VCF -> SNP/INDEL hard filter -> merge
+
+Step-start behavior:
+  --run_step Raw_QC       starts at Raw_QC and runs to the end
+  --run_step Trimming_QC  starts at Trimming_QC and runs to the end
+  --run_step Aligning     starts at Aligning and runs to the end; if Step2 outputs are incomplete, it auto-runs Trimming_QC once
+  --run_step Calling      starts at Calling; if Step3 outputs are incomplete, it auto-runs Aligning once
+                          (no multi-level fallback beyond one step)
 
 Output root:
   results/
 
 Examples:
-  nextflow run main.nf -profile local --input_dir data --ref ref.fa --run_step all
-  nextflow run main.nf -profile slurm --input_dir data --ref ref.fa --run_step Calling --caller gatk --slurm_queue cpu --slurm_account my_account --slurm_time 48h
-  nextflow run main.nf -profile awsbatch --input_dir data --ref ref.fa --run_step Calling --caller bcftools --aws_queue my-queue --aws_workdir s3://my-bucket/nf-work --aws_container myrepo/wgs:latest
-  nextflow run main.nf --input_dir data --ref ref.fa --read_type PE --run_step Raw_QC
-  nextflow run main.nf --input_dir data --ref ref.fa --read_type PE --run_step Trimming_QC --fastp_parameters '--qualified_quality_phred 20 --length_required 50'
-  nextflow run main.nf --input_dir data --ref ref.fa --read_type PE --run_step Aligning
-  nextflow run main.nf --input_dir data --ref ref.fa --read_type PE --run_step Calling --caller gatk --use_bqsr true
+  From test_run/run:
+  nextflow run ../../main.nf -profile local --input_dir ../data --ref ../data/sim_ref_100kb.fa --run_step all
+  nextflow run ../../main.nf -profile slurm --input_dir ../data --ref ../data/sim_ref_100kb.fa --run_step Calling --caller gatk --slurm_queue cpu --slurm_account my_account --slurm_time 48h
+  nextflow run ../../main.nf -profile awsbatch --input_dir ../data --ref ../data/sim_ref_100kb.fa --run_step Calling --caller bcftools --aws_queue my-queue --aws_workdir s3://my-bucket/nf-work --aws_container myrepo/wgs:latest
+  nextflow run ../../main.nf --input_dir ../data --ref ../data/sim_ref_100kb.fa --read_type PE --run_step Raw_QC
+  nextflow run ../../main.nf --input_dir ../data --ref ../data/sim_ref_100kb.fa --read_type PE --run_step Trimming_QC --fastp_parameters '--qualified_quality_phred 20 --length_required 50'
+  nextflow run ../../main.nf --input_dir ../data --ref ../data/sim_ref_100kb.fa --read_type PE --run_step Aligning
+  nextflow run ../../main.nf --input_dir ../data --ref ../data/sim_ref_100kb.fa --read_type PE --run_step Calling --caller gatk --use_bqsr true --bqsr_panel /path/to/known_sites.vcf.gz
 """.stripIndent()
 }
 
@@ -164,6 +181,9 @@ def validate_params() {
     }
     if (!(params.caller in ['bcftools', 'gatk'])) {
         error "Invalid --caller: ${params.caller}. Allowed: bcftools, gatk"
+    }
+    if (params.use_bqsr && params.caller != 'gatk') {
+        error "--use_bqsr is only supported when --caller gatk"
     }
     if (!(params.run_step in ['Raw_QC', 'Trimming_QC', 'Aligning', 'Calling', 'all'])) {
         error "Invalid --run_step: ${params.run_step}. Allowed: Raw_QC,Trimming_QC,Aligning,Calling,all"
@@ -179,6 +199,15 @@ def validate_params() {
     }
     if (!params.ref_base && !params.help) {
         error "Failed to resolve reference basename from --ref: ${params.ref}"
+    }
+    if (params.use_bqsr && !params.bqsr_panel) {
+        error "Missing required parameter: --bqsr_panel (required when --caller gatk --use_bqsr true)"
+    }
+    if (params.use_bqsr && !params.bqsr_panel_abs) {
+        error "Failed to resolve absolute BQSR panel path from --bqsr_panel: ${params.bqsr_panel}"
+    }
+    if (params.use_bqsr && !file(params.bqsr_panel_abs).exists()) {
+        error "BQSR panel file not found: ${params.bqsr_panel_abs}"
     }
 }
 
@@ -322,7 +351,7 @@ def build_clean_reads_from_step2_results() {
 def has_complete_step3_outputs() {
     def samples = collect_sample_ids_from_input()
     if (!samples) return false
-    def step3Dir = file('results/04_markdup')
+    def step3Dir = file('results/03_markdup')
     if (!step3Dir.exists()) return false
 
     return samples.every { s ->
@@ -337,7 +366,7 @@ def build_markdup_from_step3_results() {
     if (!samples) {
         error "No samples detected from input_dir for Step3 reuse: ${params.input_dir}"
     }
-    def step3Dir = file('results/04_markdup')
+    def step3Dir = file('results/03_markdup')
 
     def tuples = samples.collect { s ->
         def bam = file("${step3Dir}/${s}.markdup.bam")
@@ -400,10 +429,8 @@ def run_step4(ch_markdup) {
     def hc_input = ch_markdup
 
     if (params.use_bqsr) {
-        // 1) Seed calling is parallelized by chromosome/scaffold then merged into one genome-wide seed VCF.
-        seed_call = BCFTOOLS_CALL(ch_markdup, ch_ref_fa, ch_intervals)
-        // 2) High-confidence SNP extraction + BQSR are applied once on the full sample BAM.
-        full_bam_bqsr = GATK_BQSR(ch_markdup, seed_call.bcf_vcf, ch_ref_fa)
+        def ch_bqsr_panel = Channel.value(file(params.bqsr_panel_abs))
+        full_bam_bqsr = GATK_BQSR(ch_markdup, ch_bqsr_panel, ch_ref_fa)
         hc_input = full_bam_bqsr.recal_bam
     }
 
@@ -412,6 +439,22 @@ def run_step4(ch_markdup) {
     gt = GATK_GENOTYPEGVCFS(gdb.gendb, ch_ref_fa)
     merged_raw = GATK_MERGE_RAW(gt.raw_vcf)
     return GATK_FILTER(merged_raw.raw_merged, ch_ref_fa)
+}
+
+def run_trimming_stage(step1_done_signal = null) {
+    ch_fastp_input = build_fastp_input_channel()
+    if (step1_done_signal != null) {
+        ch_fastp_input = ch_fastp_input.combine(step1_done_signal).map { row ->
+            def data = row.take(row.size() - 1)
+            tuple(*data)
+        }
+    }
+
+    trim = FASTP(ch_fastp_input)
+    post_qc = FASTQC_POST(trim.cleaned_for_qc)
+    ch_post_fastqc_zip = post_qc.fastqc_reports.map { sample, read_label, zip_file, html_file -> zip_file }
+    MULTIQC_POST(ch_post_fastqc_zip)
+    return trim
 }
 
 workflow {
@@ -434,19 +477,22 @@ workflow {
         step1_done_signal = raw_mqc.multiqc_report
     }
 
-    if (params.run_step in ['Trimming_QC', 'all']) {
-        ch_fastp_input = build_fastp_input_channel()
-        if (params.run_step == 'all') {
-            ch_fastp_input = ch_fastp_input.combine(step1_done_signal).map { row ->
-                def data = row.take(row.size() - 1)
-                tuple(*data)
-            }
-        }
+    if (params.run_step == 'all') {
+        trim = run_trimming_stage(step1_done_signal)
+        markdup = run_step3(trim.cleaned_reads)
+        run_step4(markdup.markdup_bam)
+    }
 
-        trim = FASTP(ch_fastp_input)
-        post_qc = FASTQC_POST(trim.cleaned_for_qc)
-        ch_post_fastqc_zip = post_qc.fastqc_reports.map { sample, read_label, zip_file, html_file -> zip_file }
-        MULTIQC_POST(ch_post_fastqc_zip)
+    if (params.run_step == 'Raw_QC') {
+        trim = run_trimming_stage(step1_done_signal)
+        markdup = run_step3(trim.cleaned_reads)
+        run_step4(markdup.markdup_bam)
+    }
+
+    if (params.run_step == 'Trimming_QC') {
+        trim = run_trimming_stage()
+        markdup = run_step3(trim.cleaned_reads)
+        run_step4(markdup.markdup_bam)
     }
 
     if (params.run_step == 'Aligning') {
@@ -455,36 +501,28 @@ workflow {
             log.info "run_step=Aligning: reusing Step2 outputs from results/02_fastp_qc/fastp"
             clean_reads_for_align = build_clean_reads_from_step2_results()
         } else {
-            log.info "run_step=Aligning: Step2 outputs incomplete, running FASTP from input_dir"
-            trim = FASTP(build_fastp_input_channel())
+            log.info "run_step=Aligning: Step2 outputs incomplete, auto-running Trimming_QC once"
+            trim = run_trimming_stage()
             clean_reads_for_align = trim.cleaned_reads
         }
+
         markdup = run_step3(clean_reads_for_align)
+        run_step4(markdup.markdup_bam)
     }
 
     if (params.run_step == 'Calling') {
         def markdup_for_calling
         if (has_complete_step3_outputs()) {
-            log.info "run_step=Calling: reusing Step3 outputs from results/04_markdup"
+            log.info "run_step=Calling: reusing Step3 outputs from results/03_markdup"
             markdup_for_calling = build_markdup_from_step3_results()
         } else {
-            def clean_reads_for_align
-            if (has_complete_step2_outputs()) {
-                log.info "run_step=Calling: Step3 outputs missing, reusing Step2 outputs for alignment"
-                clean_reads_for_align = build_clean_reads_from_step2_results()
-            } else {
-                log.info "run_step=Calling: Step2/Step3 outputs missing, running FASTP from input_dir"
-                trim = FASTP(build_fastp_input_channel())
-                clean_reads_for_align = trim.cleaned_reads
+            log.info "run_step=Calling: Step3 outputs incomplete, auto-running Aligning once"
+            if (!has_complete_step2_outputs()) {
+                error "run_step=Calling can auto-fallback only one step to Aligning, but Step2 outputs are incomplete under results/02_fastp_qc/fastp"
             }
-            markdup = run_step3(clean_reads_for_align)
+            markdup = run_step3(build_clean_reads_from_step2_results())
             markdup_for_calling = markdup.markdup_bam
         }
         run_step4(markdup_for_calling)
-    }
-
-    if (params.run_step == 'all') {
-        markdup = run_step3(trim.cleaned_reads)
-        run_step4(markdup.markdup_bam)
     }
 }

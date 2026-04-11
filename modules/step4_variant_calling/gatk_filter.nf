@@ -2,7 +2,7 @@ process GATK_FILTER_PROCESS {
     tag "${callset_id}"
     container "${params.sif}"
     cpus { (params.gatk_cpus ?: params.threads ?: 1) as Integer }
-    publishDir 'results/05_variant_calling/gatk/filter', mode: 'copy'
+    publishDir 'results/04_variant_calling/gatk/filter', mode: 'move'
 
     input:
     tuple val(callset_id), path(raw_vcf), path(raw_tbi), path(ref_fa)
@@ -67,5 +67,11 @@ workflow GATK_FILTER {
     GATK_FILTER_PROCESS(ch_input)
 
     emit:
-    filtered_vcf = GATK_FILTER_PROCESS.out.filtered_vcf
+    filtered_vcf = GATK_FILTER_PROCESS.out.filtered_vcf.map { callset_id, vcf, tbi ->
+        tuple(
+            callset_id,
+            file("results/04_variant_calling/gatk/filter/${vcf.name}"),
+            file("results/04_variant_calling/gatk/filter/${tbi.name}")
+        )
+    }
 }

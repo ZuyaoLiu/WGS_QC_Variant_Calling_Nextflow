@@ -2,7 +2,7 @@ process GATK_HAPLOTYPECALLER_BY_CHR_PROCESS {
     tag "${sample_id}:${chrom}"
     container "${params.sif}"
     cpus { (params.gatk_cpus ?: params.threads ?: 1) as Integer }
-    publishDir 'results/05_variant_calling/gatk/haplotypecaller/per_chrom', mode: 'copy'
+    publishDir 'results/04_variant_calling/gatk/haplotypecaller/per_chrom', mode: 'move'
 
     input:
     tuple val(sample_id), path(input_bam), path(input_bai), path(ref_fa), val(interval_idx), val(chrom)
@@ -51,5 +51,13 @@ workflow GATK_HAPLOTYPECALLER {
     GATK_HAPLOTYPECALLER_BY_CHR_PROCESS(ch_input)
 
     emit:
-    gvcf = GATK_HAPLOTYPECALLER_BY_CHR_PROCESS.out.gvcf_per_chr
+    gvcf = GATK_HAPLOTYPECALLER_BY_CHR_PROCESS.out.gvcf_per_chr.map { sample_id, interval_idx, chrom, gvcf, gvcf_index ->
+        tuple(
+            sample_id,
+            interval_idx,
+            chrom,
+            file("results/04_variant_calling/gatk/haplotypecaller/per_chrom/${gvcf.name}"),
+            file("results/04_variant_calling/gatk/haplotypecaller/per_chrom/${sample_id}.${interval_idx}.g.vcf.gz.tbi")
+        )
+    }
 }

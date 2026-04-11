@@ -14,16 +14,18 @@ A containerized, modular **Nextflow DSL2** pipeline for **non-human WGS variant 
 1. Check help:
 
 ```bash
-nextflow run main.nf --help
+cd test_run/run
+nextflow run ../../main.nf --help
 ```
 
 2. Run full pipeline locally:
 
 ```bash
-nextflow run main.nf \
+cd test_run/run
+nextflow run ../../main.nf \
   -profile local \
-  --input_dir /data/fastq \
-  --ref /data/ref.fa \
+  --input_dir ../data \
+  --ref ../data/sim_ref_100kb.fa \
   --read_type PE \
   --run_step all \
   --caller gatk \
@@ -51,41 +53,44 @@ Sample ID inference:
 Example input naming:
 
 - PE:
-  - `Sample00_R1.fastq`
-  - `Sample00_R2.fastq`
-  - `Sample01_R1.fastq.gz`
-  - `Sample01_R2.fastq.gz`
-  - `Sample02_R1.fq`
-  - `Sample02_R2.fq`
-  - `Sample03_R1.fq.gz`
-  - `Sample03_R2.fq.gz`
+  - `SimA_R1.fastq.gz`
+  - `SimA_R2.fastq.gz`
+  - `SimB_R1.fastq.gz`
+  - `SimB_R2.fastq.gz`
+  - `SimC_R1.fastq.gz`
+  - `SimC_R2.fastq.gz`
 - SE:
-  - `Sample00.fastq`
-  - `Sample01.fastq.gz`
-  - `Sample02.fq`
-  - `Sample03.fq.gz`
+  - `SimSingleA.fastq`
+  - `SimSingleB.fastq.gz`
+  - `SimSingleC.fq`
+  - `SimSingleD.fq.gz`
 
 ## Execution Modes
 
-Full run:
+Default full run:
 
 ```bash
-nextflow run main.nf --run_step all ...
+cd test_run/run
+nextflow run ../../main.nf --run_step all --input_dir ../data --ref ../data/sim_ref_100kb.fa ...
 ```
 
-Single-step run:
+Start from a specific step and continue to the end:
 
 ```bash
-nextflow run main.nf --run_step Raw_QC ...
-nextflow run main.nf --run_step Trimming_QC ...
-nextflow run main.nf --run_step Aligning ...
-nextflow run main.nf --run_step Calling ...
+cd test_run/run
+nextflow run ../../main.nf --run_step Raw_QC --input_dir ../data --ref ../data/sim_ref_100kb.fa ...
+nextflow run ../../main.nf --run_step Trimming_QC --input_dir ../data --ref ../data/sim_ref_100kb.fa ...
+nextflow run ../../main.nf --run_step Aligning --input_dir ../data --ref ../data/sim_ref_100kb.fa ...
+nextflow run ../../main.nf --run_step Calling --input_dir ../data --ref ../data/sim_ref_100kb.fa ...
 ```
 
 Behavior notes:
 
-- `Aligning` reuses Step2 outputs in `results/02_fastp_qc/fastp` if complete; otherwise it runs fastp.
-- `Calling` reuses Step3 outputs in `results/04_markdup` if complete; if not, it falls back to Step2 outputs, then to fresh fastp+alignment.
+- `Raw_QC` starts at Step1 and continues through all remaining steps.
+- `Trimming_QC` starts at Step2 and continues through all remaining steps.
+- `Aligning` starts at Step3 and continues through Calling. If Step2 outputs in `results/02_fastp_qc/fastp` are incomplete, it auto-runs `Trimming_QC` once.
+- `Calling` starts at Step4. If Step3 outputs in `results/03_markdup` are incomplete, it auto-runs `Aligning` once.
+- No multi-level fallback is performed. For example, `run_step=Calling` will not continue falling back from `Aligning` to `Trimming_QC`.
 
 ## Workflow Logic
 
@@ -118,8 +123,7 @@ Step4 `Calling` (parallel by chromosome/scaffold from FASTA headers):
   - SNP/INDEL hard filtering
   - merge filtered SNP+INDEL
 - `caller=gatk --use_bqsr true`:
-  - bcftools seed call (per interval) + merge
-  - high-confidence SNP extraction for BQSR known-sites
+  - use an external known-sites panel provided via `--bqsr_panel`
   - BaseRecalibrator + ApplyBQSR on full BAM
   - then same GATK per-interval chain and final filtering as above
 
@@ -134,9 +138,8 @@ results/
 │   ├── fastp/
 │   ├── fastqc/
 │   └── multiqc/
-├── 03_align/
-├── 04_markdup/
-└── 05_variant_calling/
+├── 03_markdup/
+└── 04_variant_calling/
     ├── bcftools/
     │   ├── per_chrom/
     │   └── cohort.bcftools.vcf.gz(.tbi)
@@ -151,7 +154,6 @@ results/
 
 Typical filenames:
 
-- `SAMPLE.sorted.bam`
 - `SAMPLE.markdup.bam`
 - `cohort.bcftools.vcf.gz`
 - `cohort.gatk.filtered.vcf.gz`
@@ -164,6 +166,7 @@ Core controls:
 - `--read_type`: `SE|PE` (default: `PE`)
 - `--caller`: `bcftools|gatk` (default: `bcftools`)
 - `--use_bqsr`: `true|false` (default: `false`)
+- `--bqsr_panel`: external known-sites VCF/VCF.GZ for BQSR (default: `null`)
 - `--help`: print help and exit
 
 Extra tool args:
@@ -182,7 +185,7 @@ Extra tool args:
 - `--gatk_variantfiltration_snp_parameters`
 - `--gatk_variantfiltration_indel_parameters`
 
-Note: `--bcftools_*_parameters` affect both Step4 `caller=bcftools` and the BQSR seed-calling path under `caller=gatk --use_bqsr true`.
+Note: `--use_bqsr true` is only supported with `--caller gatk`, and requires `--bqsr_panel`.
 
 Container:
 
@@ -211,9 +214,10 @@ Select executor profile with `-profile`:
 Example:
 
 ```bash
-nextflow run main.nf -profile local ...
-nextflow run main.nf -profile slurm ...
-nextflow run main.nf -profile awsbatch ...
+cd test_run/run
+nextflow run ../../main.nf -profile local --input_dir ../data --ref ../data/sim_ref_100kb.fa ...
+nextflow run ../../main.nf -profile slurm --input_dir ../data --ref ../data/sim_ref_100kb.fa ...
+nextflow run ../../main.nf -profile awsbatch --input_dir ../data --ref ../data/sim_ref_100kb.fa ...
 ```
 
 SLURM parameters (`-profile slurm`):
@@ -239,10 +243,11 @@ AWS Batch parameters (`-profile awsbatch`):
 Calling only with bcftools:
 
 ```bash
-nextflow run main.nf \
+cd test_run/run
+nextflow run ../../main.nf \
   -profile local \
-  --input_dir /data/fastq \
-  --ref /data/ref.fa \
+  --input_dir ../data \
+  --ref ../data/sim_ref_100kb.fa \
   --run_step Calling \
   --caller bcftools \
   --threads 4
@@ -251,26 +256,30 @@ nextflow run main.nf \
 Calling only with GATK + BQSR:
 
 ```bash
-nextflow run main.nf \
+cd test_run/run
+nextflow run ../../main.nf \
   -profile local \
-  --input_dir /data/fastq \
-  --ref /data/ref.fa \
+  --input_dir ../data \
+  --ref ../data/sim_ref_100kb.fa \
   --run_step Calling \
   --caller gatk \
   --use_bqsr true \
+  --bqsr_panel /path/to/known_sites.vcf.gz \
   --threads 4
 ```
 
 SLURM example:
 
 ```bash
-nextflow run main.nf \
+cd test_run/run
+nextflow run ../../main.nf \
   -profile slurm \
-  --input_dir /data/fastq \
-  --ref /data/ref.fa \
+  --input_dir ../data \
+  --ref ../data/sim_ref_100kb.fa \
   --run_step Calling \
   --caller gatk \
   --use_bqsr true \
+  --bqsr_panel /path/to/known_sites.vcf.gz \
   --slurm_queue cpu \
   --slurm_account my_account \
   --slurm_time 48h \
@@ -280,10 +289,11 @@ nextflow run main.nf \
 AWS Batch example:
 
 ```bash
-nextflow run main.nf \
+cd test_run/run
+nextflow run ../../main.nf \
   -profile awsbatch \
-  --input_dir /data/fastq \
-  --ref /data/ref.fa \
+  --input_dir ../data \
+  --ref ../data/sim_ref_100kb.fa \
   --run_step Calling \
   --caller bcftools \
   --aws_queue my-queue \
@@ -292,6 +302,48 @@ nextflow run main.nf \
   --aws_region us-east-1 \
   --threads 4
 ```
+
+## BQSR Panel Requirements
+
+If you enable `--caller gatk --use_bqsr true`, you must provide an external known-sites panel with `--bqsr_panel`.
+
+Recommended panel characteristics:
+
+- High-confidence variant sites only.
+- Indexed VCF/VCF.GZ built on the same reference FASTA used by the pipeline.
+- Stable sites supported by reliable genotype and depth patterns.
+
+For species without a standard community BQSR panel, a practical strategy is:
+
+1. Run the `bcftools` branch first and generate a raw cohort VCF.
+2. Apply very strict filtering to retain only highly reliable sites.
+3. Use the resulting filtered VCF as `--bqsr_panel` in a second GATK+BQSR run.
+
+Example strict criteria for constructing a candidate BQSR panel  (for reference only, please set you own cut-off instead):
+
+- `QUAL >= 999`
+  Site-level variant quality. Higher values indicate stronger evidence that the site is a true variant.
+- `AF >= 0.1`
+  Allele frequency. This avoids very low-frequency sites that may be unstable or weakly supported.
+- `GQ >= 50`
+  Genotype quality. This keeps only highly confident per-sample genotype calls.
+- Per-sample `DP` within a sample-specific acceptable range
+  Depth outside the expected range for a given sample can indicate under-covered or problematic genotypes.
+  A practical approach is: compute each sample's mean DP using non-missing genotypes, then mask calls outside an allowed interval such as `0.5x` to `2.5x` that sample mean.
+  An alternative approche is: filter based on meanDP across all samples and sites (recommend for evenly sequenced projects).
+- Allelic-balance check passed
+  This is mainly for heterozygous genotypes. Strong imbalance between REF and ALT support can indicate false heterozygous calls.
+  The in-house script can be found in `bqsr_filter_script/Filter_DP_per_Sample.py`.
+
+## FAQ
+
+### Why might I still filter sites by missing fraction when building a BQSR panel?
+
+BQSR itself is applied per sample on each BAM, so site missingness is not a direct requirement of the BQSR algorithm. However, if you are building your own known-sites panel, missing fraction can still help remove unstable cohort sites.
+
+- A site with many missing genotypes may reflect poor mappability, uneven depth, local complexity, or unreliable genotype calling.
+- Such sites are often a poor choice for a high-confidence known-sites panel, even if BQSR does not explicitly require cohort-wide completeness.
+- A threshold such as `missing proportion <= 0.1` is therefore best treated as a recommended panel-construction filter, not as a hard requirement of the BQSR algorithm itself.
 
 ## Software Scope (Intentional Constraints)
 
@@ -307,6 +359,7 @@ Included only:
 - bcftools
 - GATK
 
+For Script `bqsr_filter_script/Filter_DP_per_Sample.py`, PySam needs to be installed.
 
 ## Reproducibility Notes
 

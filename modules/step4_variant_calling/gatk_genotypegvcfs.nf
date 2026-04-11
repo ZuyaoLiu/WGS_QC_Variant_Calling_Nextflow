@@ -2,7 +2,7 @@ process GATK_GENOTYPEGVCFS_BY_CHR_PROCESS {
     tag "cohort:${chrom}"
     container "${params.sif}"
     cpus { (params.gatk_cpus ?: params.threads ?: 1) as Integer }
-    publishDir 'results/05_variant_calling/gatk/genotypegvcfs/per_chrom', mode: 'copy'
+    publishDir 'results/04_variant_calling/gatk/genotypegvcfs/per_chrom', mode: 'move'
 
     input:
     tuple val(interval_idx), val(chrom), path(genomicsdb_dir), path(ref_fa)
@@ -46,5 +46,13 @@ workflow GATK_GENOTYPEGVCFS {
     GATK_GENOTYPEGVCFS_BY_CHR_PROCESS(ch_input)
 
     emit:
-    raw_vcf = GATK_GENOTYPEGVCFS_BY_CHR_PROCESS.out.raw_vcf_per_chr
+    raw_vcf = GATK_GENOTYPEGVCFS_BY_CHR_PROCESS.out.raw_vcf_per_chr.map { sample_id, interval_idx, chrom, raw_vcf, raw_tbi ->
+        tuple(
+            sample_id,
+            interval_idx,
+            chrom,
+            file("results/04_variant_calling/gatk/genotypegvcfs/per_chrom/${raw_vcf.name}"),
+            file("results/04_variant_calling/gatk/genotypegvcfs/per_chrom/${raw_tbi.name}")
+        )
+    }
 }
