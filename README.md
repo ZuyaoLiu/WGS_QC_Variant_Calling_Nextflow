@@ -29,8 +29,7 @@ nextflow run ../../main.nf \
   --read_type PE \
   --run_step all \
   --caller gatk \
-  --use_bqsr false \
-  --threads 8
+  --use_bqsr false
 ```
 
 3. Output root:
@@ -107,8 +106,8 @@ Step2 `Trimming_QC`:
 
 Step3 `Aligning`:
 
-- `SE`: `bwa index -> bwa mem -> samtools sort -> sambamba markdup`
-- `PE`: `bwa-mem2 index -> bwa-mem2 mem -> samtools fixmate -> samtools sort -> sambamba markdup`
+- `SE`: `bwa index -> bwa mem | samtools sort | samtools markdup -r`
+- `PE`: `bwa-mem2 index -> bwa-mem2 mem | samtools sort -n | samtools fixmate | samtools sort | samtools markdup -r`
 
 Step4 `Calling` (parallel by chromosome/scaffold from FASTA headers):
 
@@ -191,17 +190,10 @@ Container:
 
 - `--sif`: container image path
 
-Resource controls:
+Resource controls are managed in `nextflow.config`.
 
-- `--threads`: global fallback threads (default: `4`)
-- Tool-specific overrides:
-  - `--fastqc_cpus`
-  - `--fastp_cpus`
-  - `--bwa_cpus`
-  - `--bwamem2_cpus`
-  - `--sambamba_cpus`
-  - `--bcftools_cpus`
-  - `--gatk_cpus`
+- Edit profile-level defaults in `nextflow.config` to change global cpu, memory, time, and queue settings.
+- Edit `process.withName` blocks in `nextflow.config` to change individual step resources.
 
 ## Profile Switching
 
@@ -220,23 +212,11 @@ nextflow run ../../main.nf -profile slurm --input_dir ../data --ref ../data/sim_
 nextflow run ../../main.nf -profile awsbatch --input_dir ../data --ref ../data/sim_ref_100kb.fa ...
 ```
 
-SLURM parameters (`-profile slurm`):
+Scheduler settings are now managed directly in [nextflow.config](/scratch/zuyao_20260402/vcf_nextflow/2_nextflow/WGS_QC_Variant_Calling_Nextflow/nextflow.config:1).
 
-- `--slurm_queue`
-- `--slurm_account`
-- `--slurm_qos`
-- `--slurm_time`
-- `--slurm_constraint`
-- `--slurm_extra` (default includes memory request)
-- `--slurm_queue_size`
-
-AWS Batch parameters (`-profile awsbatch`):
-
-- `--aws_region` (default: `us-east-1`)
-- `--aws_queue`
-- `--aws_workdir`
-- `--aws_container`
-- `--aws_cli_path`
+- Use the `slurm` profile defaults in `nextflow.config` to control global queue, cpu, memory, time, and cluster options.
+- Use `process { withName: 'PROCESS_NAME' { ... } }` blocks in `nextflow.config` to override resources for individual steps.
+- Use the `awsbatch` profile defaults in `nextflow.config` to set AWS region, Batch queue, container image, and S3 work directory.
 
 ## Typical Commands
 
@@ -249,8 +229,7 @@ nextflow run ../../main.nf \
   --input_dir ../data \
   --ref ../data/sim_ref_100kb.fa \
   --run_step Calling \
-  --caller bcftools \
-  --threads 4
+  --caller bcftools
 ```
 
 Calling only with GATK + BQSR:
@@ -264,8 +243,7 @@ nextflow run ../../main.nf \
   --run_step Calling \
   --caller gatk \
   --use_bqsr true \
-  --bqsr_panel /path/to/known_sites.vcf.gz \
-  --threads 4
+  --bqsr_panel /path/to/known_sites.vcf.gz
 ```
 
 SLURM example:
@@ -279,12 +257,10 @@ nextflow run ../../main.nf \
   --run_step Calling \
   --caller gatk \
   --use_bqsr true \
-  --bqsr_panel /path/to/known_sites.vcf.gz \
-  --slurm_queue cpu \
-  --slurm_account my_account \
-  --slurm_time 48h \
-  --threads 8
+  --bqsr_panel /path/to/known_sites.vcf.gz
 ```
+
+Before using `-profile slurm`, edit `nextflow.config` and set the global SLURM defaults and any per-process `withName` overrides you need.
 
 AWS Batch example:
 
@@ -295,13 +271,10 @@ nextflow run ../../main.nf \
   --input_dir ../data \
   --ref ../data/sim_ref_100kb.fa \
   --run_step Calling \
-  --caller bcftools \
-  --aws_queue my-queue \
-  --aws_workdir s3://my-bucket/nf-work \
-  --aws_container 123456789012.dkr.ecr.us-east-1.amazonaws.com/wgs:latest \
-  --aws_region us-east-1 \
-  --threads 4
+  --caller bcftools
 ```
+
+Before using `-profile awsbatch`, edit `nextflow.config` and set the AWS Batch queue, container image, region, and S3 work directory.
 
 ## BQSR Panel Requirements
 
@@ -361,7 +334,6 @@ Included only:
 - bwa
 - bwa-mem2
 - samtools
-- sambamba
 - bcftools
 - GATK
 

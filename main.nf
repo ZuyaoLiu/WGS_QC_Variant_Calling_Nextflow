@@ -26,14 +26,6 @@ params.ref_abs          = params.ref ? file(params.ref).toAbsolutePath().toStrin
 params.ref_base         = params.ref_abs ? file(params.ref_abs).getName() : null
 params.bqsr_panel_abs   = params.bqsr_panel ? file(params.bqsr_panel).toAbsolutePath().toString() : null
 
-params.threads        = (params.threads ?: 4) as Integer
-params.fastqc_cpus    = (params.fastqc_cpus ?: params.threads) as Integer
-params.fastp_cpus     = (params.fastp_cpus ?: params.threads) as Integer
-params.bwa_cpus       = (params.bwa_cpus ?: params.threads) as Integer
-params.bwamem2_cpus   = (params.bwamem2_cpus ?: params.threads) as Integer
-params.sambamba_cpus  = (params.sambamba_cpus ?: params.threads) as Integer
-params.bcftools_cpus  = (params.bcftools_cpus ?: params.threads) as Integer
-params.gatk_cpus      = (params.gatk_cpus ?: params.threads) as Integer
 
 include { FASTQC_RAW }  from './modules/step1_raw_qc/fastqc_raw'
 include { MULTIQC_RAW } from './modules/step1_raw_qc/multiqc_raw'
@@ -42,13 +34,10 @@ include { FASTP }        from './modules/step2_fastp_qc/fastp'
 include { FASTQC_POST }  from './modules/step2_fastp_qc/fastqc_post'
 include { MULTIQC_POST } from './modules/step2_fastp_qc/multiqc_post'
 
-include { BWA_SE }            from './modules/step3_alignment/bwa_se'
-include { BWAMEM2_PE }        from './modules/step3_alignment/bwa_mem2_pe'
+include { ALIGN_MARKDUP_SE }  from './modules/step3_alignment/align_markdup_se'
+include { ALIGN_MARKDUP_PE }  from './modules/step3_alignment/align_markdup_pe'
 include { BWA_INDEX }         from './modules/step3_alignment/bwa_index'
 include { BWAMEM2_INDEX }     from './modules/step3_alignment/bwa_mem2_index'
-include { FIXMATE }           from './modules/step3_alignment/fixmate'
-include { SORT_BAM }          from './modules/step3_alignment/sort'
-include { SAMBAMBA_MARKDUP }  from './modules/step3_alignment/sambamba_markdup'
 
 include { BCFTOOLS_CALL }         from './modules/step4_variant_calling/bcftools_call'
 include { GATK_BQSR }             from './modules/step4_variant_calling/gatk_bqsr'
@@ -106,38 +95,16 @@ Core controls:
   --gatk_applybqsr_parameters Extra GATK ApplyBQSR options      [default: '']
   --gatk_variantfiltration_snp_parameters Extra GATK SNP VariantFiltration options [default: '']
   --gatk_variantfiltration_indel_parameters Extra GATK INDEL VariantFiltration options [default: '']
-  --sif               Container image path                     [default: ${params.sif}]
-
-Thread controls:
-  --threads        Global fallback threads             [default: 4]
-  --fastqc_cpus    FastQC threads (overrides --threads)
-  --fastp_cpus     fastp threads (overrides --threads)
-  --bwa_cpus       BWA threads (overrides --threads)
-  --bwamem2_cpus   bwa-mem2 threads (overrides --threads)
-  --sambamba_cpus  sambamba threads (overrides --threads)
-  --bcftools_cpus  bcftools threads (overrides --threads)
-  --gatk_cpus      GATK threads (overrides --threads)
+  --sif               Container image path                     [default: ./WGS_Variant_Calling.sif]
 
 Profile switching:
   -profile local      Local executor (default profile behavior)
   -profile slurm      SLURM scheduler
   -profile awsbatch   AWS Batch scheduler
 
-SLURM profile params (used with -profile slurm):
-  --slurm_queue        Partition/queue name                      [default: null]
-  --slurm_account      SLURM account                             [default: null]
-  --slurm_qos          SLURM QoS                                 [default: null]
-  --slurm_time         Job walltime (e.g. 24h, 02:00:00)         [default: null]
-  --slurm_constraint   Node constraint                           [default: null]
-  --slurm_extra        Extra sbatch options string               [default: null]
-  --slurm_queue_size   Nextflow submit queue size                [default: null]
-
-AWS Batch profile params (used with -profile awsbatch):
-  --aws_region         AWS region                                [default: us-east-1]
-  --aws_queue          AWS Batch queue                           [default: null]
-  --aws_workdir        S3 work directory                         [default: null]
-  --aws_container      Docker image for AWS Batch                [default: null]
-  --aws_cli_path       Optional aws CLI path                     [default: null]
+Scheduler configuration:
+  SLURM and AWS Batch resource defaults are defined in nextflow.config.
+  Edit nextflow.config to change global queue/cpu/memory/time or per-process withName overrides.
 
 Workflow steps:
   Raw_QC:
@@ -145,8 +112,8 @@ Workflow steps:
   Trimming_QC:
     fastp -> FastQC (post-fastp) -> MultiQC
   Aligning:
-    SE: BWA index -> BWA -> sort -> sambamba markdup
-    PE: bwa-mem2 index -> bwa-mem2 -> fixmate -> sort -> sambamba markdup
+    SE: BWA index -> bwa mem | samtools sort | samtools markdup -r
+    PE: bwa-mem2 index -> bwa-mem2 mem | samtools sort -n | samtools fixmate | samtools sort | samtools markdup -r
   Calling (parallel by chromosome/scaffold from reference headers):
     bcftools: per-chrom call -> merge
     gatk(use_bqsr=false): per-chrom HC/GDB/Genotype -> merge raw VCF -> SNP/INDEL hard filter -> merge
@@ -165,8 +132,8 @@ Output root:
 Examples:
   From test_run/run:
   nextflow run ../../main.nf -profile local --input_dir ../data --ref ../data/sim_ref_100kb.fa --run_step all
-  nextflow run ../../main.nf -profile slurm --input_dir ../data --ref ../data/sim_ref_100kb.fa --run_step Calling --caller gatk --slurm_queue cpu --slurm_account my_account --slurm_time 48h
-  nextflow run ../../main.nf -profile awsbatch --input_dir ../data --ref ../data/sim_ref_100kb.fa --run_step Calling --caller bcftools --aws_queue my-queue --aws_workdir s3://my-bucket/nf-work --aws_container myrepo/wgs:latest
+  nextflow run ../../main.nf -profile slurm --input_dir ../data --ref ../data/sim_ref_100kb.fa --run_step Calling --caller gatk
+  nextflow run ../../main.nf -profile awsbatch --input_dir ../data --ref ../data/sim_ref_100kb.fa --run_step Calling --caller bcftools
   nextflow run ../../main.nf --input_dir ../data --ref ../data/sim_ref_100kb.fa --read_type PE --run_step Raw_QC
   nextflow run ../../main.nf --input_dir ../data --ref ../data/sim_ref_100kb.fa --read_type PE --run_step Trimming_QC --fastp_parameters '--qualified_quality_phred 20 --length_required 50'
   nextflow run ../../main.nf --input_dir ../data --ref ../data/sim_ref_100kb.fa --read_type PE --run_step Aligning
@@ -405,16 +372,11 @@ def run_step3(ch_clean_reads) {
 
     if (params.read_type == 'SE') {
         ref_index = BWA_INDEX(ch_ref_fa)
-        se_aln = BWA_SE(ch_clean_reads, ref_index.ref_bundle)
-        sorted = SORT_BAM(se_aln.bam_for_sort)
-        return SAMBAMBA_MARKDUP(sorted.sorted_bam)
+        return ALIGN_MARKDUP_SE(ch_clean_reads, ref_index.ref_bundle)
     }
 
     ref_index = BWAMEM2_INDEX(ch_ref_fa)
-    pe_aln = BWAMEM2_PE(ch_clean_reads, ref_index.ref_bundle)
-    fixed = FIXMATE(pe_aln.bam_for_fixmate)
-    sorted = SORT_BAM(fixed.bam_for_sort)
-    return SAMBAMBA_MARKDUP(sorted.sorted_bam)
+    return ALIGN_MARKDUP_PE(ch_clean_reads, ref_index.ref_bundle)
 }
 
 // Step4 dispatcher: all calling branches run per chromosome/scaffold and then merge.

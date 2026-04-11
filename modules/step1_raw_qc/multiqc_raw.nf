@@ -1,7 +1,6 @@
 process MULTIQC_RAW_PROCESS {
     tag 'raw_fastqc'
     container "${params.sif}"
-    cpus { (params.threads ?: 1) as Integer }
     publishDir 'results/01_raw_qc/multiqc', mode: 'move'
 
     input:

@@ -1,7 +1,6 @@
 process FASTQC_POST_PROCESS {
     tag "${sample_id}:${read_label}"
     container "${params.sif}"
-    cpus { (params.fastqc_cpus ?: params.threads ?: 1) as Integer }
     publishDir 'results/02_fastp_qc/fastqc', mode: 'move'
 
     input:

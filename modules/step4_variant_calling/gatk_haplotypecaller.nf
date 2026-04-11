@@ -1,7 +1,6 @@
 process GATK_HAPLOTYPECALLER_BY_CHR_PROCESS {
     tag "${sample_id}:${chrom}"
     container "${params.sif}"
-    cpus { (params.gatk_cpus ?: params.threads ?: 1) as Integer }
     publishDir 'results/04_variant_calling/gatk/haplotypecaller/per_chrom', mode: 'move'
 
     input:

@@ -6,5 +6,4 @@ nextflow run ../../main.nf \
   --run_step all \
   --caller gatk \
   --use_bqsr false \
-  --threads 4 \
   --sif WGS_Variant_Calling.sif

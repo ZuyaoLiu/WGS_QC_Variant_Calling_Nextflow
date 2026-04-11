@@ -1,7 +1,6 @@
 process GATK_GENOTYPEGVCFS_BY_CHR_PROCESS {
     tag "cohort:${chrom}"
     container "${params.sif}"
-    cpus { (params.gatk_cpus ?: params.threads ?: 1) as Integer }
     publishDir 'results/04_variant_calling/gatk/genotypegvcfs/per_chrom', mode: 'move'
 
     input:

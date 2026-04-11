@@ -1,7 +1,6 @@
 process GATK_GENOMICSDBIMPORT_BY_CHR_PROCESS {
     tag "cohort:${chrom}"
     container "${params.sif}"
-    cpus { (params.gatk_cpus ?: params.threads ?: 1) as Integer }
     publishDir 'results/04_variant_calling/gatk/genomicsdb/per_chrom', mode: 'move'
 
     input:
