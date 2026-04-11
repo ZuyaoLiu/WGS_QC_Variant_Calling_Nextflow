@@ -323,17 +323,23 @@ Example strict criteria for constructing a candidate BQSR panel  (for reference 
 
 - `QUAL >= 999`
   Site-level variant quality. Higher values indicate stronger evidence that the site is a true variant.
+  
 - `AF >= 0.1`
   Allele frequency. This avoids very low-frequency sites that may be unstable or weakly supported.
+  
 - `GQ >= 50`
   Genotype quality. This keeps only highly confident per-sample genotype calls.
+  
 - Per-sample `DP` within a sample-specific acceptable range
   Depth outside the expected range for a given sample can indicate under-covered or problematic genotypes.
   A practical approach is: compute each sample's mean DP using non-missing genotypes, then mask calls outside an allowed interval such as `0.5x` to `2.5x` that sample mean.
+  The in-house script can be found in `bqsr_filter_script/Filter_DP_per_Sample.py`.
+  
   An alternative approche is: filter based on meanDP across all samples and sites (recommend for evenly sequenced projects).
+  
 - Allelic-balance check passed
   This is mainly for heterozygous genotypes. Strong imbalance between REF and ALT support can indicate false heterozygous calls.
-  The in-house script can be found in `bqsr_filter_script/Filter_DP_per_Sample.py`.
+  
 
 ## FAQ
 
