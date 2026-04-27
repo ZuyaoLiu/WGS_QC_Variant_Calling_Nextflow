@@ -1,31 +1,192 @@
-# NGS Variant Calling Nextflow Pipeline
+# WGS QC and Variant Calling Pipeline
 
-![Nextflow Pipeline Workflow](./Pipeline_figure.png)
+![Pipeline workflow](./Pipeline_figure.png)
 
-A containerized, modular **Nextflow DSL2** pipeline for **non-human WGS variant calling**.
+A modular **Nextflow DSL2** pipeline for short-read, non-human whole-genome variant calling. The repository is organized around:
 
-- **Nextflow**: `25.10.4`
-- **Runtime**: Apptainer/Singularity
-- **Container image**: `WGS_Variant_Calling.sif` (available in Release)
-- **Main flow**: `Raw_QC -> Trimming_QC -> Aligning -> Calling`
+- `main.nf` for parameter handling and top-level orchestration
+- `subworkflows/` for step-level pipeline composition
+- `modules/` for single-responsibility process wrappers
+- `vcf_filtering_scripts/` for helper Python and R scripts
 
-Scheduler settings are now managed directly in [nextflow.config](WGS_QC_Variant_Calling_Nextflow/nextflow.config:1).
+## Overview
 
-- Use the `slurm` profile defaults in `nextflow.config` to control global queue, cpu, memory, time, and cluster options.
-- Use `process { withName: 'PROCESS_NAME' { ... } }` blocks in `nextflow.config` to override resources for individual steps.
-- Use the `awsbatch` profile defaults in `nextflow.config` to set AWS region, Batch queue, container image, and S3 work directory.
+Main execution flow:
 
+`Raw_QC -> Trimming_QC -> Aligning -> Calling -> optional VCF_Filtering`
 
-## Quick Start 
+Supported entry modes:
 
-1. Check help:
+- `--run_step Raw_QC`
+- `--run_step Trimming_QC`
+- `--run_step Aligning`
+- `--run_step Calling`
+- `--run_step VCF_Filtering`
+- `--run_step all`
+
+Key design choices:
+
+- `Raw_QC` is an inspection stop and exits after QC
+- alignment emits **reference-embedded CRAM** instead of BAM
+- calling is parallelized by `--interval_size`
+- optional `vcffilter` currently implements **phase2** only
+
+## Repository Layout
+
+```text
+.
+├── main.nf
+├── nextflow.config
+├── vcffilter.config
+├── subworkflows/
+│   ├── raw_qc.nf
+│   ├── trimming_qc.nf
+│   ├── alignment.nf
+│   ├── variant_calling.nf
+│   └── vcf_filtering.nf
+├── modules/
+│   ├── download/
+│   ├── qc/
+│   ├── alignment/
+│   ├── calling/
+│   └── vcf_filtering/
+├── vcf_filtering_scripts/
+├── test_run/
+└── pipeline_info/
+```
+
+Structure rules:
+
+- `main.nf` should not contain tool-specific process logic
+- `subworkflows/` should express step boundaries and dataflow
+- `modules/` should wrap one concrete task or tightly related task group
+- helper scripts should stay outside `modules/` unless they are tiny inline shell fragments
+
+## Workflow Modules
+
+### Raw QC
+
+- local FASTQ input or SRA download
+- raw `FastQC`
+- raw `MultiQC`
+
+### Trimming QC
+
+- `fastp`
+- post-trim `FastQC`
+- post-trim `MultiQC`
+
+### Alignment
+
+- `bwa-mem2`
+- `samtools collate` and `fixmate` for PE
+- `sambamba markdup`
+- final output: `SAMPLE.markdup.cram` and `SAMPLE.markdup.cram.crai`
+
+### Variant Calling
+
+- `bcftools` cohort calling
+- `GATK` HaplotypeCaller / GenomicsDB / GenotypeGVCFs branch
+- optional BQSR for GATK
+- optional cleanup of per-interval gVCFs after GenomicsDBImport
+
+### VCF Filtering
+
+- controlled by `vcffilter.config`
+- current implementation: `phase2`
+- current scope: **biallelic SNP only**
+- not supported: `indel` or mixed `SNP + indel` filtering
+
+## Inputs
+
+### Global
+
+- `--run_step`: `Raw_QC | Trimming_QC | Aligning | Calling | VCF_Filtering | all`
+- `--read_type`: `SE | PE`
+- `--ref`: required for `Raw_QC`, `Trimming_QC`, `Aligning`, `Calling`, and `all`
+- `--ref` is not required for standalone `VCF_Filtering`
+
+### Step1 Raw_QC
+
+Inputs:
+
+- `--input_dir`: raw FASTQ directory
+- `--SRA_list`: two-column SRA list file
+
+Requirement:
+
+- for `--run_step Raw_QC` or `--run_step all`, provide exactly one of `--input_dir` or `--SRA_list`
+
+### Step2 Trimming_QC
+
+Inputs:
+
+- `--input_dir`: raw FASTQ directory
+
+Requirement:
+
+- for `--run_step Trimming_QC`, `--input_dir` is required
+
+### Step3 Aligning
+
+Inputs:
+
+- `--trimmed_input_dir`: trimmed FASTQ directory
+
+Behavior:
+
+- if `--trimmed_input_dir` is not provided, the workflow reuses Step2 outputs from `results/02_fastp_qc/fastp`
+- if Step2 outputs are missing and `--run_step Aligning` is used, the workflow auto-runs `Trimming_QC` once
+
+### Step4 Calling
+
+Inputs:
+
+- Step3 CRAM outputs under `results/03_markdup`
+- `--trimmed_input_dir`: optional one-step fallback input to `Aligning`
+- `--bqsr_panel`: known-sites VCF/VCF.GZ when `--caller gatk --use_bqsr true`
+
+Requirement:
+
+- for any path that executes `Calling`, `--interval_size` is required
+
+### Step5 VCF_Filtering
+
+Inputs:
+
+- Step4 cohort VCF when `--enable_vcffilter true`
+- `--input_vcf`: standalone VCF input for `--run_step VCF_Filtering`
+
+Requirement:
+
+- for `--run_step VCF_Filtering`, `--input_vcf` is required
+- standalone mode also expects a tabix index at `INPUT_VCF.tbi`
+
+Input naming:
+
+- PE: `sample_R1.fastq.gz` and `sample_R2.fastq.gz`
+- SE: `sample.fastq.gz` or `sample.fq.gz`
+
+SRA list format:
+
+- column 1: SRA accession
+- column 2: preferred sample name
+
+Reference constraint:
+
+- reference headers must not use `chr:start-end` style names, because they conflict with region parsing in downstream tools
+
+## Running the Pipeline
+
+Check help:
 
 ```bash
 cd test_run/run
 nextflow run ../../main.nf --help
+nextflow run ../../main.nf --help_full
 ```
 
-2. Run full pipeline locally:
+Run the full pipeline:
 
 ```bash
 cd test_run/run
@@ -35,249 +196,149 @@ nextflow run ../../main.nf \
   --ref ../data/sim_ref_100kb.fa \
   --read_type PE \
   --run_step all \
-  --caller gatk \
-  --use_bqsr false
+  --caller bcftools \
+  --interval_size 50K
 ```
 
-3. Output root:
-
-- `results/`
-
-## Input Requirements
-
-Required:
-
-- `--input_dir`: directory containing FASTQ files
-- `--ref`: reference FASTA
-⚠️ **Note:** Reference sequence headers must not use the `chr:start-end` naming pattern (e.g. `>chrXIX:0-20580295`), as this conflicts with `bcftools -r` region parsing and will cause runtime errors.
-
-Sample ID inference:
-
-- PE: strip `_R1.fastq` / `_R2.fastq`, `_R1.fastq.gz` / `_R2.fastq.gz`, `_R1.fq` / `_R2.fq`, or `_R1.fq.gz` / `_R2.fq.gz`
-- SE: strip `.fastq`, `.fastq.gz`, `.fq`, or `.fq.gz`
-
-Example input naming:
-
-- PE:
-  - `SimA_R1.fastq.gz`
-  - `SimA_R2.fastq.gz`
-  - `SimB_R1.fastq.gz`
-  - `SimB_R2.fastq.gz`
-  - `SimC_R1.fastq.gz`
-  - `SimC_R2.fastq.gz`
-- SE:
-  - `SimSingleA.fastq`
-  - `SimSingleB.fastq.gz`
-  - `SimSingleC.fq`
-  - `SimSingleD.fq.gz`
-
-## Execution Modes
-
-Default full run:
+Start from alignment with external trimmed reads:
 
 ```bash
 cd test_run/run
-nextflow run ../../main.nf --run_step all --input_dir ../data --ref ../data/sim_ref_100kb.fa ...
+nextflow run ../../main.nf \
+  -profile local \
+  --trimmed_input_dir ../data \
+  --ref ../data/sim_ref_100kb.fa \
+  --read_type PE \
+  --run_step Aligning \
+  --caller bcftools \
+  --interval_size 50K
 ```
 
-Start from a specific step and continue to the end:
+Run calling plus vcffilter phase2:
 
 ```bash
 cd test_run/run
-nextflow run ../../main.nf --run_step Raw_QC --input_dir ../data --ref ../data/sim_ref_100kb.fa ...
-nextflow run ../../main.nf --run_step Trimming_QC --input_dir ../data --ref ../data/sim_ref_100kb.fa ...
-nextflow run ../../main.nf --run_step Aligning --input_dir ../data --ref ../data/sim_ref_100kb.fa ...
-nextflow run ../../main.nf --run_step Calling --input_dir ../data --ref ../data/sim_ref_100kb.fa ...
+nextflow run ../../main.nf \
+  -profile local \
+  --trimmed_input_dir ../data \
+  --ref ../data/sim_ref_100kb.fa \
+  --read_type PE \
+  --run_step Calling \
+  --caller bcftools \
+  --interval_size 50K \
+  --enable_vcffilter true
 ```
 
-Behavior notes:
+Run standalone vcffilter phase2 from an external VCF:
 
-- `Raw_QC` starts at Step1 and continues through all remaining steps.
-- `Trimming_QC` starts at Step2 and continues through all remaining steps.
-- `Aligning` starts at Step3 and continues through Calling. If Step2 outputs in `results/02_fastp_qc/fastp` are incomplete, it auto-runs `Trimming_QC` once.
-- `Calling` starts at Step4. If Step3 outputs in `results/03_markdup` are incomplete, it auto-runs `Aligning` once.
-- No multi-level fallback is performed. For example, `run_step=Calling` will not continue falling back from `Aligning` to `Trimming_QC`.
+```bash
+cd test_run/run
+nextflow run ../../main.nf \
+  -profile local \
+  --run_step VCF_Filtering \
+  --input_vcf /path/to/cohort.vcf.gz
+```
 
-## Workflow Logic
+## Execution Behavior
 
-Step1 `Raw_QC`:
+- `Raw_QC` runs Step 1 only and exits
+- `Trimming_QC` runs from trimming to the current pipeline end
+- `Aligning` can consume `--trimmed_input_dir` directly
+- `Calling` can reuse published Step 3 CRAM outputs
+- `VCF_Filtering` can run either from Step4 output or directly from `--input_vcf`
+- only one fallback level is allowed when resuming from later steps
 
-- FastQC on raw FASTQ
-- MultiQC summary
+## Configuration
 
-Step2 `Trimming_QC`:
+### Main pipeline config
 
-- fastp
-- FastQC on cleaned FASTQ
-- MultiQC summary
+Use [nextflow.config](/scratch/zuyao_20260402/WGS_QC_Variant_Calling_Nextflow/nextflow.config) for:
 
-Step3 `Aligning`:
+- executor profiles
+- process resources
+- global defaults
+- container settings
 
-- `SE`: `bwa index -> bwa mem | samtools sort | samtools markdup -r`
-- `PE`: `bwa-mem2 index -> bwa-mem2 mem | samtools sort -n | samtools fixmate | samtools sort | samtools markdup -r`
+Default container image:
 
-Step4 `Calling` (parallel by chromosome/scaffold from FASTA headers):
+- `leonardliu0910/wgs_variant_calling:latest`
 
-- `caller=bcftools`:
-  - per-interval calling
-  - merge into one final multisample cohort VCF
-- `caller=gatk --use_bqsr false`:
-  - HaplotypeCaller (per interval)
-  - GenomicsDBImport (per interval)
-  - GenotypeGVCFs (per interval)
-  - merge raw VCFs
-  - SNP/INDEL hard filtering
-  - merge filtered SNP+INDEL
-- `caller=gatk --use_bqsr true`:
-  - use an external known-sites panel provided via `--bqsr_panel`
-  - BaseRecalibrator + ApplyBQSR on full BAM
-  - then same GATK per-interval chain and final filtering as above
+Default container runtime:
 
-## Results Structure
+- `Apptainer`
+
+Container selection rules:
+
+- use `--image` to select a Docker/registry image
+- use `--sif` to select a local Singularity or Apptainer image file
+- if `--sif` is provided, it overrides `--image` for Singularity/Apptainer execution
+
+### VCF filter config
+
+Use [vcffilter.config](/scratch/zuyao_20260402/WGS_QC_Variant_Calling_Nextflow/vcffilter.config) for:
+
+- `phase1` parameters
+- `phase2` parameters
+- default filtering thresholds
+
+The file uses short parameter names grouped by comments instead of nested Nextflow maps.
+
+## Outputs
 
 ```text
 results/
+├── 00_sra_download/
 ├── 01_raw_qc/
-│   ├── fastqc/
-│   └── multiqc/
 ├── 02_fastp_qc/
-│   ├── fastp/
-│   ├── fastqc/
-│   └── multiqc/
 ├── 03_markdup/
-└── 04_variant_calling/
-    ├── bcftools/
-    │   ├── per_chrom/
-    │   └── cohort.bcftools.vcf.gz(.tbi)
-    └── gatk/
-        ├── bqsr/
-        ├── haplotypecaller/per_chrom/
-        ├── genomicsdb/per_chrom/
-        ├── genotypegvcfs/per_chrom/
-        ├── genotypegvcfs/cohort.gatk.raw.vcf.gz(.tbi)
-        └── filter/cohort.gatk.filtered.vcf.gz(.tbi)
+│   ├── SAMPLE.markdup.cram
+│   └── SAMPLE.markdup.cram.crai
+├── 04_variant_calling/
+│   ├── bcftools/
+│   └── gatk/
+└── 05_vcf_filtering/
+    ├── 02_phase2/
+    └── final/
 ```
 
-Typical filenames:
+Representative final outputs:
 
-- `SAMPLE.markdup.bam`
 - `cohort.bcftools.vcf.gz`
 - `cohort.gatk.filtered.vcf.gz`
+- `cohort.vcffilter.phase2.vcf.gz`
 
-## Parameters
+## Profiles
 
-Core controls:
+Supported profiles:
 
-- `--run_step`: `Raw_QC|Trimming_QC|Aligning|Calling|all` (default: `all`)
-- `--read_type`: `SE|PE` (default: `PE`)
-- `--caller`: `bcftools|gatk` (default: `bcftools`)
-- `--use_bqsr`: `true|false` (default: `false`)
-- `--bqsr_panel`: external known-sites VCF/VCF.GZ for BQSR (default: `null`)
-- `--help`: print help and exit
+- `local`
+- `slurm`
+- `awsbatch`
 
-Extra tool args:
+Resource tuning should be done in `nextflow.config`, not by editing module scripts.
 
-- `--fastp_parameters`
-- `--bwa_parameters`
-- `--bwamem2_parameters`
-- `--bcftools_mpileup_parameters`
-- `--bcftools_call_parameters`
-- `--bcftools_concat_parameters`
-- `--gatk_haplotypecaller_parameters`
-- `--gatk_genomicsdbimport_parameters`
-- `--gatk_genotypegvcfs_parameters`
-- `--gatk_baserecalibrator_parameters`
-- `--gatk_applybqsr_parameters`
-- `--gatk_variantfiltration_snp_parameters`
-- `--gatk_variantfiltration_indel_parameters`
+Container engines:
 
-Note: `--use_bqsr true` is only supported with `--caller gatk`, and requires `--bqsr_panel`.
+- Apptainer is enabled by default
+- Docker is supported through `-with-docker`
+- Singularity is supported through `-with-singularity`
+- Apptainer is supported through `-with-apptainer`
+- use `--image` with any engine when pulling from Docker Hub or another registry
+- use `--sif` only with `-with-singularity` or `-with-apptainer`
+- for local conda-based testing without containers, pass `-c /tmp/wgs_qc_no_container.config`
 
-Container:
+## Current Limitations
 
-- `--sif`: container image path
+- `vcffilter` currently implements `phase1` review and `phase2` final filtering
+- `vcffilter_stop_after phase1` stops after the phase1 review outputs
+- `vcffilter` supports **biallelic SNP** only
+- the deprecated file `VCF_filtering.config` is kept only as a compatibility marker
 
-Resource controls are managed in `nextflow.config`.
+## Test Data
 
-- Edit profile-level defaults in `nextflow.config` to change global cpu, memory, time, and queue settings.
-- Edit `process.withName` blocks in `nextflow.config` to change individual step resources.
+The repository includes a small runnable dataset under [test_run](/scratch/zuyao_20260402/WGS_QC_Variant_Calling_Nextflow/test_run).
 
-## Profile Switching
-
-Select executor profile with `-profile`:
-
-- `local`: local execution
-- `slurm`: SLURM scheduler
-- `awsbatch`: AWS Batch
-
-Example:
-
-```bash
-cd test_run/run
-nextflow run ../../main.nf -profile local --input_dir ../data --ref ../data/sim_ref_100kb.fa ...
-nextflow run ../../main.nf -profile slurm --input_dir ../data --ref ../data/sim_ref_100kb.fa ...
-nextflow run ../../main.nf -profile awsbatch --input_dir ../data --ref ../data/sim_ref_100kb.fa ...
-```
-
-
-
-## Typical Commands
-
-Calling only with bcftools:
-
-```bash
-cd test_run/run
-nextflow run ../../main.nf \
-  -profile local \
-  --input_dir ../data \
-  --ref ../data/sim_ref_100kb.fa \
-  --run_step Calling \
-  --caller bcftools
-```
-
-Calling only with GATK + BQSR:
-
-```bash
-cd test_run/run
-nextflow run ../../main.nf \
-  -profile local \
-  --input_dir ../data \
-  --ref ../data/sim_ref_100kb.fa \
-  --run_step Calling \
-  --caller gatk \
-  --use_bqsr true \
-  --bqsr_panel /path/to/known_sites.vcf.gz
-```
-
-SLURM example:
-
-```bash
-cd test_run/run
-nextflow run ../../main.nf \
-  -profile slurm \
-  --input_dir ../data \
-  --ref ../data/sim_ref_100kb.fa \
-  --run_step Calling \
-  --caller gatk \
-  --use_bqsr true \
-  --bqsr_panel /path/to/known_sites.vcf.gz
-```
-
-Before using `-profile slurm`, edit `nextflow.config` and set the global SLURM defaults and any per-process `withName` overrides you need.
-
-AWS Batch example:
-
-```bash
-cd test_run/run
-nextflow run ../../main.nf \
-  -profile awsbatch \
-  --input_dir ../data \
-  --ref ../data/sim_ref_100kb.fa \
-  --run_step Calling \
-  --caller bcftools
-```
-
-Before using `-profile awsbatch`, edit `nextflow.config` and set the AWS Batch queue, container image, region, and S3 work directory.
+Use it for smoke tests after structural or module changes.
 
 ## BQSR Panel Requirements
 
@@ -321,7 +382,7 @@ Example strict criteria for constructing a candidate BQSR panel  (for reference 
 
 ### Why might I still filter sites by missing fraction when building a BQSR panel?
 
-BQSR itself is applied per sample on each BAM, so site missingness is not a direct requirement of the BQSR algorithm. However, if you are building your own known-sites panel, missing fraction can still help remove unstable cohort sites.
+BQSR itself is applied per sample on each alignment file, so site missingness is not a direct requirement of the BQSR algorithm. However, if you are building your own known-sites panel, missing fraction can still help remove unstable cohort sites.
 
 - A site with many missing genotypes may reflect poor mappability, uneven depth, local complexity, or unreliable genotype calling.
 - Such sites are often a poor choice for a high-confidence known-sites panel, even if BQSR does not explicitly require cohort-wide completeness.
