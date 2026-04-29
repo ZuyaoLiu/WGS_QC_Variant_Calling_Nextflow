@@ -23,4 +23,4 @@ Scripts:
 Notes:
 
 - These scripts are intended to be called from Nextflow processes.
-- Historical helper scripts remain in their original locations for compatibility, but new `vcffilter` code should use the helpers in this directory.
+- New `vcffilter` code should use the helpers in this directory.
