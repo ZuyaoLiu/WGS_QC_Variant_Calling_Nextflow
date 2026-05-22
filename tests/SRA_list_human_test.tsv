@@ -1,0 +1,25 @@
+# SRA test sample list for human WGS data.
+# Format: TAB-separated, at least two columns
+#   col1: SRA accession (SRR / ERR / DRR)
+#   col2: sample_id (your label, used as the prefix of output files)
+# Lines starting with # are skipped. Blank lines are skipped.
+#
+# Usage:
+#   nextflow run main.nf -profile slurm \
+#     --SRA_list tests/SRA_list_human_test.tsv \
+#     --ref /path/to/human_reference.fa \
+#     --read_type PE \
+#     --interval_size 50M \
+#     --run_step all
+#
+# Notes:
+# - read_type must be set to PE or SE depending on the chosen accessions.
+#   Most modern human WGS submissions on SRA are paired-end (PE).
+# - For a fast smoke test, pick a small accession (< 5 GB) and a small interval_size
+#   (e.g. 10M-50M) so the pipeline finishes in a reasonable time.
+# - Add as many rows as you want; each row becomes one sample.
+#
+# Example rows (uncomment and edit; replace the placeholders):
+# SRR_ACCESSION_1	sample_name_1
+# SRR_ACCESSION_2	sample_name_2
+
