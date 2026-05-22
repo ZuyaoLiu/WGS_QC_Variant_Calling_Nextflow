@@ -51,11 +51,5 @@ workflow PHASE2_FINAL_FILTER {
     PHASE2_FINAL_FILTER_PROCESS(ch_input)
 
     emit:
-    final_vcf = PHASE2_FINAL_FILTER_PROCESS.out.final_vcf.map { callset_id, vcf, tbi ->
-        tuple(
-            callset_id,
-            file("results/05_vcf_filtering/final/${vcf.name}"),
-            file("results/05_vcf_filtering/final/${tbi.name}")
-        )
-    }
+    final_vcf = PHASE2_FINAL_FILTER_PROCESS.out.final_vcf
 }

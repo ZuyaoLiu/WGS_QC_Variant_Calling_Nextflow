@@ -34,17 +34,6 @@ workflow PHASE1_SAMPLE_DP_MASK {
     PHASE1_SAMPLE_DP_MASK_PROCESS(ch_filtered_vcf, dp_mask_script)
 
     emit:
-    masked_vcf = PHASE1_SAMPLE_DP_MASK_PROCESS.out.masked_vcf.map { callset_id, bcf, csi ->
-        tuple(
-            callset_id,
-            file("results/05_vcf_filtering/01_phase1/intermediate/${bcf.name}"),
-            file("results/05_vcf_filtering/01_phase1/intermediate/${csi.name}")
-        )
-    }
-    sample_table = PHASE1_SAMPLE_DP_MASK_PROCESS.out.sample_table.map { callset_id, sample_tsv ->
-        tuple(
-            callset_id,
-            file("results/05_vcf_filtering/01_phase1/intermediate/${sample_tsv.name}")
-        )
-    }
+    masked_vcf = PHASE1_SAMPLE_DP_MASK_PROCESS.out.masked_vcf
+    sample_table = PHASE1_SAMPLE_DP_MASK_PROCESS.out.sample_table
 }

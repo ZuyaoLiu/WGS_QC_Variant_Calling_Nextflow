@@ -75,18 +75,6 @@ workflow PHASE2_REMOVE_HIGH_MISSING_SAMPLES {
     PHASE2_REMOVE_HIGH_MISSING_SAMPLES_PROCESS(ch_input)
 
     emit:
-    filtered_vcf = PHASE2_REMOVE_HIGH_MISSING_SAMPLES_PROCESS.out.filtered_vcf.map { callset_id, vcf, tbi ->
-        tuple(
-            callset_id,
-            file("results/05_vcf_filtering/02_phase2/intermediate/${vcf.name}"),
-            file("results/05_vcf_filtering/02_phase2/intermediate/${tbi.name}")
-        )
-    }
-    remove_lists = PHASE2_REMOVE_HIGH_MISSING_SAMPLES_PROCESS.out.remove_lists.map { callset_id, remove_list, reason_tsv ->
-        tuple(
-            callset_id,
-            file("results/05_vcf_filtering/02_phase2/intermediate/${remove_list.name}"),
-            file("results/05_vcf_filtering/02_phase2/intermediate/${reason_tsv.name}")
-        )
-    }
+    filtered_vcf = PHASE2_REMOVE_HIGH_MISSING_SAMPLES_PROCESS.out.filtered_vcf
+    remove_lists = PHASE2_REMOVE_HIGH_MISSING_SAMPLES_PROCESS.out.remove_lists
 }

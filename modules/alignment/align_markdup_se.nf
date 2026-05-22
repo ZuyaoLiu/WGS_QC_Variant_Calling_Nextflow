@@ -1,7 +1,7 @@
 process ALIGN_MARKDUP_SE_PROCESS {
     tag "${sample_id}"
     container "${params.container_image}"
-    publishDir 'results/03_markdup', mode: 'move'
+    publishDir 'results/03_markdup', mode: 'symlink', enabled: params.publish_cram
 
     input:
     tuple val(sample_id), path(fq)
@@ -38,11 +38,5 @@ workflow ALIGN_MARKDUP_SE {
     ALIGN_MARKDUP_SE_PROCESS(ch_input, ch_ref_bundle, ch_ref_fa)
 
     emit:
-    markdup_alignment = ALIGN_MARKDUP_SE_PROCESS.out.markdup.map { sample_id, cram, crai ->
-        tuple(
-            sample_id,
-            file("results/03_markdup/${cram.name}"),
-            file("results/03_markdup/${crai.name}")
-        )
-    }
+    markdup_alignment = ALIGN_MARKDUP_SE_PROCESS.out.markdup
 }

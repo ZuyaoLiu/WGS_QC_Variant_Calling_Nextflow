@@ -28,10 +28,5 @@ workflow PHASE2_INITIAL_SAMPLE_MISSINGNESS {
     PHASE2_INITIAL_SAMPLE_MISSINGNESS_PROCESS(ch_called_vcf, compute_script)
 
     emit:
-    sample_missingness = PHASE2_INITIAL_SAMPLE_MISSINGNESS_PROCESS.out.sample_missingness.map { callset_id, missing_tsv ->
-        tuple(
-            callset_id,
-            file("results/05_vcf_filtering/02_phase2/intermediate/${missing_tsv.name}")
-        )
-    }
+    sample_missingness = PHASE2_INITIAL_SAMPLE_MISSINGNESS_PROCESS.out.sample_missingness
 }

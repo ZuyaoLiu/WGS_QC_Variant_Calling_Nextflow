@@ -38,14 +38,5 @@ workflow PHASE2_FINAL_REPORTS {
     PHASE2_FINAL_REPORTS_PROCESS(ch_final_vcf, compute_script, plot_script)
 
     emit:
-    reports = PHASE2_FINAL_REPORTS_PROCESS.out.reports.map { callset_id, missing_tsv, hist_pdf, density_pdf, cutoff_pdf, stats_txt ->
-        tuple(
-            callset_id,
-            file("results/05_vcf_filtering/final/${missing_tsv.name}"),
-            file("results/05_vcf_filtering/final/${hist_pdf.name}"),
-            file("results/05_vcf_filtering/final/${density_pdf.name}"),
-            file("results/05_vcf_filtering/final/${cutoff_pdf.name}"),
-            file("results/05_vcf_filtering/final/${stats_txt.name}")
-        )
-    }
+    reports = PHASE2_FINAL_REPORTS_PROCESS.out.reports
 }

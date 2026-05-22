@@ -52,23 +52,6 @@ workflow PHASE1_REPORTS {
     PHASE1_REPORTS_PROCESS(ch_input, compute_script, plot_missing_script, plot_dp_script)
 
     emit:
-    sample_missingness = PHASE1_REPORTS_PROCESS.out.sample_missingness.map { callset_id, missing_tsv ->
-        tuple(
-            callset_id,
-            file("results/05_vcf_filtering/01_phase1/review/${missing_tsv.name}")
-        )
-    }
-    reports = PHASE1_REPORTS_PROCESS.out.reports.map { callset_id, missing_tsv, hist_pdf, density_pdf, cutoff_pdf, sample_dp_tsv, dp_hist_pdf, dp_density_pdf, stats_txt ->
-        tuple(
-            callset_id,
-            file("results/05_vcf_filtering/01_phase1/review/${missing_tsv.name}"),
-            file("results/05_vcf_filtering/01_phase1/review/${hist_pdf.name}"),
-            file("results/05_vcf_filtering/01_phase1/review/${density_pdf.name}"),
-            file("results/05_vcf_filtering/01_phase1/review/${cutoff_pdf.name}"),
-            file("results/05_vcf_filtering/01_phase1/review/${sample_dp_tsv.name}"),
-            file("results/05_vcf_filtering/01_phase1/review/${dp_hist_pdf.name}"),
-            file("results/05_vcf_filtering/01_phase1/review/${dp_density_pdf.name}"),
-            file("results/05_vcf_filtering/01_phase1/review/${stats_txt.name}")
-        )
-    }
+    sample_missingness = PHASE1_REPORTS_PROCESS.out.sample_missingness
+    reports = PHASE1_REPORTS_PROCESS.out.reports
 }

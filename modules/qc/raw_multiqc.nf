@@ -1,7 +1,7 @@
 process MULTIQC_RAW_PROCESS {
     tag 'raw_fastqc'
     container "${params.container_image}"
-    publishDir 'results/01_raw_qc/multiqc', mode: 'move'
+    publishDir 'results/01_raw_qc/multiqc', mode: 'symlink'
 
     input:
     path fastqc_zip_files
@@ -12,11 +12,6 @@ process MULTIQC_RAW_PROCESS {
 
     script:
     """
-    export OMP_NUM_THREADS=${task.cpus}
-    export OPENBLAS_NUM_THREADS=${task.cpus}
-    export MKL_NUM_THREADS=${task.cpus}
-    export POLARS_MAX_THREADS=${task.cpus}
-    export RAYON_NUM_THREADS=${task.cpus}
     multiqc -o . ${fastqc_zip_files}
     """
 }

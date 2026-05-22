@@ -1,7 +1,6 @@
 process GATK_MERGE_RAW_PROCESS {
     tag "${sample_id}"
     container "${params.container_image}"
-    publishDir 'results/04_variant_calling/gatk/genotypegvcfs', mode: 'move'
 
     input:
     tuple val(sample_id), path(raw_vcf_files), path(raw_vcf_tbis)
@@ -11,14 +10,8 @@ process GATK_MERGE_RAW_PROCESS {
 
     script:
     """
-    export OMP_NUM_THREADS=${task.cpus}
-    export OPENBLAS_NUM_THREADS=${task.cpus}
-    export MKL_NUM_THREADS=${task.cpus}
-    export POLARS_MAX_THREADS=${task.cpus}
-    export RAYON_NUM_THREADS=${task.cpus}
-
     ls -1 ${raw_vcf_files} | sort > raw_vcf.list
-    bcftools concat --threads ${task.cpus} -a -f raw_vcf.list -Oz -o ${sample_id}.gatk.raw.vcf.gz
+    bcftools concat --threads ${task.cpus} -f raw_vcf.list -Oz -o ${sample_id}.gatk.raw.vcf.gz
     tabix -f -p vcf ${sample_id}.gatk.raw.vcf.gz
     """
 }
@@ -35,11 +28,5 @@ workflow GATK_MERGE_RAW {
     GATK_MERGE_RAW_PROCESS(ch_for_merge)
 
     emit:
-    raw_merged = GATK_MERGE_RAW_PROCESS.out.raw_merged.map { sample_id, raw_vcf, raw_tbi ->
-        tuple(
-            sample_id,
-            file("results/04_variant_calling/gatk/genotypegvcfs/${raw_vcf.name}"),
-            file("results/04_variant_calling/gatk/genotypegvcfs/${raw_tbi.name}")
-        )
-    }
+    raw_merged = GATK_MERGE_RAW_PROCESS.out.raw_merged
 }

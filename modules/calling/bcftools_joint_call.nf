@@ -1,26 +1,15 @@
 process BCFTOOLS_CALL_BY_CHR_PROCESS {
     tag "${callset_id}:${interval_idx}"
     container "${params.container_image}"
-    publishDir 'results/04_variant_calling/bcftools/per_interval', mode: 'move'
 
     input:
-    tuple val(callset_id), path(markdup_alignments), path(markdup_indexes), path(ref_fa), val(interval_idx), val(interval_spec)
+    tuple val(callset_id), path(markdup_alignments), path(markdup_indexes), path(ref_fa), path(ref_fai), path(ref_dict), val(interval_idx), val(interval_spec)
 
     output:
     tuple val(callset_id), val(interval_idx), val(interval_spec), path("${callset_id}.${interval_idx}.bcftools.vcf.gz"), path("${callset_id}.${interval_idx}.bcftools.vcf.gz.tbi"), emit: per_chr
 
     script:
     """
-    export OMP_NUM_THREADS=${task.cpus}
-    export OPENBLAS_NUM_THREADS=${task.cpus}
-    export MKL_NUM_THREADS=${task.cpus}
-    export POLARS_MAX_THREADS=${task.cpus}
-    export RAYON_NUM_THREADS=${task.cpus}
-
-    if [ ! -f ${ref_fa}.fai ]; then
-      samtools faidx ${ref_fa}
-    fi
-
     bcftools mpileup \
       --threads ${task.cpus} \
       -q 20 -a DP,AD \
@@ -38,7 +27,7 @@ process BCFTOOLS_CALL_BY_CHR_PROCESS {
 process BCFTOOLS_MERGE_PROCESS {
     tag "${callset_id}"
     container "${params.container_image}"
-    publishDir 'results/04_variant_calling/bcftools', mode: 'move'
+    publishDir 'results/04_variant_calling/bcftools', mode: 'symlink'
 
     input:
     tuple val(callset_id), path(vcf_files), path(vcf_tbis)
@@ -48,14 +37,8 @@ process BCFTOOLS_MERGE_PROCESS {
 
     script:
     """
-    export OMP_NUM_THREADS=${task.cpus}
-    export OPENBLAS_NUM_THREADS=${task.cpus}
-    export MKL_NUM_THREADS=${task.cpus}
-    export POLARS_MAX_THREADS=${task.cpus}
-    export RAYON_NUM_THREADS=${task.cpus}
-
     ls -1 ${vcf_files} | sort > vcf.list
-    bcftools concat --threads ${task.cpus} -a ${params.bcftools_concat_parameters} -f vcf.list -Oz -o ${callset_id}.bcftools.vcf.gz
+    bcftools concat --threads ${task.cpus} ${params.bcftools_concat_parameters} -f vcf.list -Oz -o ${callset_id}.bcftools.vcf.gz
     tabix -f -p vcf ${callset_id}.bcftools.vcf.gz
     """
 }
@@ -71,21 +54,14 @@ workflow BCFTOOLS_CALL {
         .map { sample_id, alignment_file, alignment_index -> tuple('cohort', alignment_file, alignment_index) }
         .groupTuple()
 
+    // ch_ref is a value channel of tuple(ref_fa, ref_fai, ref_dict) from PREPARE_REFERENCE.
     ch_input = ch_callset.combine(ch_ref).combine(ch_intervals).map { row ->
-        tuple(row[0], row[1], row[2], row[3], row[4], row[5])
+        tuple(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7])
     }
 
     BCFTOOLS_CALL_BY_CHR_PROCESS(ch_input)
 
-    ch_per_chr = BCFTOOLS_CALL_BY_CHR_PROCESS.out.per_chr.map { callset_id, interval_idx, interval_spec, vcf, tbi ->
-        tuple(
-            callset_id,
-            interval_idx,
-            interval_spec,
-            file("results/04_variant_calling/bcftools/per_interval/${vcf.name}"),
-            file("results/04_variant_calling/bcftools/per_interval/${tbi.name}")
-        )
-    }
+    ch_per_chr = BCFTOOLS_CALL_BY_CHR_PROCESS.out.per_chr
 
     ch_for_merge = ch_per_chr
         .map { callset_id, interval_idx, interval_spec, vcf, tbi -> tuple(callset_id, vcf, tbi) }
@@ -94,12 +70,6 @@ workflow BCFTOOLS_CALL {
     BCFTOOLS_MERGE_PROCESS(ch_for_merge)
 
     emit:
-    bcf_vcf = BCFTOOLS_MERGE_PROCESS.out.merged.map { callset_id, vcf, tbi ->
-        tuple(
-            callset_id,
-            file("results/04_variant_calling/bcftools/${vcf.name}"),
-            file("results/04_variant_calling/bcftools/${tbi.name}")
-        )
-    }
+    bcf_vcf = BCFTOOLS_MERGE_PROCESS.out.merged
     bcf_per_chr = ch_per_chr
 }

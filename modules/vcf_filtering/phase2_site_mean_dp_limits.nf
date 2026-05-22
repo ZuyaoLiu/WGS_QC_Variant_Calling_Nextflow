@@ -67,11 +67,5 @@ workflow PHASE2_SITE_MEAN_DP_LIMITS {
     PHASE2_SITE_MEAN_DP_LIMITS_PROCESS(ch_filtered_vcf, dp_mask_script)
 
     emit:
-    dp_limits = PHASE2_SITE_MEAN_DP_LIMITS_PROCESS.out.dp_limits.map { callset_id, sample_mean_dp_tsv, limits_tsv ->
-        tuple(
-            callset_id,
-            file("results/05_vcf_filtering/02_phase2/intermediate/${sample_mean_dp_tsv.name}"),
-            file("results/05_vcf_filtering/02_phase2/intermediate/${limits_tsv.name}")
-        )
-    }
+    dp_limits = PHASE2_SITE_MEAN_DP_LIMITS_PROCESS.out.dp_limits
 }

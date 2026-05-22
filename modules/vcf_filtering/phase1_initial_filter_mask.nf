@@ -80,11 +80,5 @@ workflow PHASE1_INITIAL_FILTER_MASK {
     PHASE1_INITIAL_FILTER_MASK_PROCESS(ch_called_vcf)
 
     emit:
-    filtered_vcf = PHASE1_INITIAL_FILTER_MASK_PROCESS.out.filtered_vcf.map { callset_id, vcf, csi ->
-        tuple(
-            callset_id,
-            file("results/05_vcf_filtering/01_phase1/intermediate/${vcf.name}"),
-            file("results/05_vcf_filtering/01_phase1/intermediate/${csi.name}")
-        )
-    }
+    filtered_vcf = PHASE1_INITIAL_FILTER_MASK_PROCESS.out.filtered_vcf
 }
