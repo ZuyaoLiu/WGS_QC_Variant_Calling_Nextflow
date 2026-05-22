@@ -43,133 +43,60 @@ include { VARIANT_CALLING }       from './subworkflows/variant_calling'
 include { VCF_FILTERING }         from './subworkflows/vcf_filtering'
 
 def print_help(boolean full = false) {
-    def trimmingAdvanced = full ? """
-  Advanced:
-    --fastp_parameters  Extra fastp options string             [default: '']
-""" : ""
-
-    def aligningAdvanced = full ? """
-  Advanced:
-    --bwamem2_parameters Extra bwa-mem2 mem options string     [default: '']
-""" : ""
-
-    def callingAdvanced = full ? """
-  Advanced:
-    --bcftools_mpileup_parameters Extra bcftools mpileup options [default: '']
-    --bcftools_call_parameters Extra bcftools call options        [default: '']
-    --bcftools_concat_parameters Extra bcftools concat options    [default: '']
-    --gatk_haplotypecaller_parameters Extra GATK HaplotypeCaller options [default: '']
-    --gatk_genomicsdbimport_parameters Extra GATK GenomicsDBImport options [default: '']
-    --gatk_genotypegvcfs_parameters Extra GATK GenotypeGVCFs options [default: '']
-    --gatk_baserecalibrator_parameters Extra GATK BaseRecalibrator options [default: '']
-    --gatk_applybqsr_parameters Extra GATK ApplyBQSR options      [default: '']
-    --gatk_variantfiltration_snp_parameters Extra GATK SNP VariantFiltration options [default: '']
-    --gatk_variantfiltration_indel_parameters Extra GATK INDEL VariantFiltration options [default: '']
-""" : ""
-
-    def vcfFilteringAdvanced = full ? """
-  Config-driven parameters:
-    VCF filtering phase parameters are read from vcffilter.config
-    Current scope: biallelic SNP only
-    Current implementation status: phase1 and phase2 available
-""" : ""
-
-    log.info """
+    // Concise default help: shows just the common knobs needed to launch a run.
+    // --help_full appends every advanced parameter / filter threshold / extras-string.
+    def base = """
 NGS Variant Calling Nextflow Pipeline (DSL2, Nextflow 25.10.4)
 
-Execution modes:
-  1) Full pipeline (default): --run_step all -> Raw_QC -> Trimming_QC -> Aligning -> Calling
-  2) Start from a specific step and continue to the end:
-     --run_step Raw_QC       -> Raw_QC only
-     --run_step Trimming_QC  -> Trimming_QC -> Aligning -> Calling [-> VCF_Filtering if enabled]
-     --run_step Aligning     -> Aligning -> Calling [-> VCF_Filtering if enabled]
-     --run_step Calling      -> Calling [-> VCF_Filtering if enabled]
-     --run_step VCF_Filtering -> VCF_Filtering only
+Common usage:
+  # FASTQ directory -> full pipeline (Raw_QC -> Trimming_QC -> Aligning -> Calling)
+  nextflow run main.nf -profile slurm \\
+      --input_dir <fastq_dir> --ref <ref.fa> --interval_size 50M
 
-Input example:
-  PE input_dir:
-    SimA_R1.fastq.gz
-    SimA_R2.fastq.gz
-    SimB_R1.fastq.gz
-    SimB_R2.fastq.gz
-    SimC_R1.fastq.gz
-    SimC_R2.fastq.gz
-  SE input_dir:
-    SimSingleA.fastq.gz
-    SimSingleB.fq.gz
+  # SRA accessions -> full pipeline
+  nextflow run main.nf -profile slurm \\
+      --SRA_list tests/SRA_list_human_test.tsv --ref <ref.fa> --interval_size 50M
 
-Parameters by scope:
+  # Standalone post-calling VCF filtering
+  nextflow run main.nf -profile slurm \\
+      --run_step VCF_Filtering --input_vcf <cohort.vcf.gz> --enable_vcffilter true
 
-Global:
-  --run_step          Raw_QC|Trimming_QC|Aligning|Calling|VCF_Filtering|all [default: all]
-  --read_type         SE|PE                                    [default: PE]
-  --ref               Reference FASTA                          [required for Raw_QC/Trimming_QC/Aligning/Calling/all; not required for standalone VCF_Filtering]
-  --help              Show this help and exit                  [default: false]
-  --help_full         Show full help with advanced options     [default: false]
-  --image             Docker/registry image                    [default: leonardliu0910/wgs_variant_calling:latest]
-  --sif               Local Singularity/Apptainer image path   [default: none; overrides --image for those engines]
+Required:
+  --ref               Reference FASTA               [required except for standalone --run_step VCF_Filtering]
+  --interval_size     Calling interval block size   [required for any path that runs Calling; e.g. 5K | 50M | 5G]
+  Provide exactly ONE input source:
+    --input_dir       Raw FASTQ directory
+    --SRA_list        Two-column TSV (accession <TAB> sample_id)
+    --trimmed_input_dir  Pre-trimmed FASTQ directory (skips Trimming_QC)
+    --input_vcf       Cohort VCF.GZ (only for standalone --run_step VCF_Filtering)
 
+Common options:
+  --run_step          Raw_QC|Trimming_QC|Aligning|Calling|VCF_Filtering|all  [default: all]
+  --read_type         SE|PE                                                  [default: PE]
+  --caller            bcftools|gatk                                          [default: bcftools]
+  --use_bqsr          true|false (gatk only; requires --bqsr_panel)          [default: false]
+  --bqsr_panel        Known-sites VCF/VCF.GZ                                 [required when --use_bqsr true]
+  --enable_vcffilter  Run post-calling VCF filtering after Calling           [default: false]
 
-Step1 Raw_QC:
-  Inputs:
-    --input_dir       Raw FASTQ directory                      [raw input mode 1]
-    --SRA_list        Two-column SRA list file                 [raw input mode 2]
-  Requirement:
-    For --run_step Raw_QC or --run_step all, provide exactly one of --input_dir or --SRA_list
+Profiles:
+  -profile local | slurm | awsbatch
 
+  --help              Show this concise help and exit
+  --help_full         Show full help with all advanced / tuning parameters
+"""
 
-Step2 Trimming_QC:
-  Inputs:
-    --input_dir       Raw FASTQ directory                      [required when starting at Trimming_QC]
-  Requirement:
-    For --run_step Trimming_QC, --input_dir is required
-${trimmingAdvanced}\
+    if (!full) {
+        log.info((base + """
+Use --help_full for: extra tool flags (fastp/bwa/bcftools/GATK), GenomicsDBImport tuning,
+VCF filter thresholds (phase1/phase2), publishing/cleanup toggles, and workflow details.
+""").stripIndent())
+        return
+    }
 
-
-Step3 Aligning:
-  Inputs:
-    --trimmed_input_dir Trimmed FASTQ directory                [optional direct input]
-  Behavior:
-    If --trimmed_input_dir is not provided, the workflow reuses Step2 outputs from results/02_fastp_qc/fastp
-    If Step2 outputs are missing and --run_step Aligning is used, the workflow auto-runs Trimming_QC once
-${aligningAdvanced}\
-
-
-Step4 Calling:
-  Inputs:
-    Step3 CRAM outputs under results/03_markdup               [preferred when available]
-    --trimmed_input_dir Trimmed FASTQ directory                [optional one-step fallback to Aligning]
-    --ref              Reference FASTA                         [required]
-    --caller            bcftools|gatk                            [default: bcftools]
-    --interval_size     Interval block size for calling          [required e.g：5K or 5M or 5G or 5000000]
-    --use_bqsr          true|false                               [default: false]
-    --bqsr_panel        External known-sites VCF/VCF.GZ for BQSR [required when BQSR is enabled]
-    --cleanup_GVCFS     Delete interval gVCFs after GenomicsDBImport succeeds [default: false]
-  Requirement:
-    For any path that executes Calling, --interval_size is required
-${callingAdvanced}\
-
-
-Step5 VCF_Filtering:
-  Inputs:
-    Step4 cohort VCF                                          [used when --enable_vcffilter true]
-    --input_vcf       Input VCF.GZ                             [required for standalone VCF_Filtering]
-    --enable_vcffilter  true|false                               [default: false]
-    --vcffilter_stop_after phase1|final                          [default: final]
-  Notes:
-    supports biallelic SNP only
-    does not support indel or mixed SNP+indel VCF filtering
-    standalone mode expects a tabix index at INPUT_VCF.tbi
-  Requirement:
-    For --run_step VCF_Filtering, --input_vcf is required
-${vcfFilteringAdvanced}\
-
-
-Profile switching:
-  -profile local      Local executor (default profile behavior; Apptainer enabled unless overridden)
-  -profile slurm      SLURM scheduler
-  -profile awsbatch   AWS Batch scheduler
-
+    def advanced = """
+==================================================================
+                       --help_full extended help
+==================================================================
 
 Workflow steps:
   Raw_QC:
@@ -177,30 +104,97 @@ Workflow steps:
   Trimming_QC:
     fastp -> FastQC (post-fastp) -> MultiQC
   Aligning:
-    SE: bwa-mem2 index -> bwa-mem2 mem | samtools sort -> sambamba markdup -> reference-embedded CRAM
-    PE: bwa-mem2 index -> bwa-mem2 mem | samtools collate | samtools fixmate | samtools sort -> sambamba markdup -> reference-embedded CRAM
-  Calling (parallel by interval_size blocks derived from reference sequence lengths):
-    bcftools: per-interval call -> merge
-    gatk(use_bqsr=false): per-interval HC/GDB/Genotype -> merge raw VCF -> SNP/INDEL hard filter -> merge
-    gatk(use_bqsr=true): external known-sites panel -> full-alignment BQSR -> per-interval HC/GDB/Genotype -> merge raw VCF -> SNP/INDEL hard filter -> merge
-  VCF_Filtering:
-    optional post-calling workflow
-    phase1: biallelic SNP filter -> optional mislabeled-sample removal -> GQ/DP masking -> optional AB masking -> sample-specific DP masking -> review reports
+    SE: bwa-mem2 index -> bwa-mem2 mem | samtools sort -> sambamba markdup -> CRAM
+    PE: bwa-mem2 index -> bwa-mem2 mem | samtools collate | samtools fixmate | samtools sort -> sambamba markdup -> CRAM
+  Calling (parallelized by --interval_size blocks):
+    bcftools: per-interval call -> concat
+    gatk:     per-interval HC -> GenomicsDBImport -> GenotypeGVCFs -> concat -> SNP/INDEL hard filter -> merge
+    gatk(use_bqsr=true): + BaseRecalibrator/ApplyBQSR on full alignments before HC
+  VCF_Filtering (when --enable_vcffilter true):
+    phase1: biallelic SNP -> optional mislabeled-sample removal -> GQ/DP mask -> optional AB mask -> sample DP mask -> review
     phase2: remove high-missing samples -> final site filter -> final reports
 
-Step-start behavior:
+Step-start fallback behavior:
   --run_step Raw_QC       runs Raw_QC only and exits
-  --run_step Trimming_QC  starts at Trimming_QC and runs to the end; Step5 runs only if --enable_vcffilter true
-  --run_step Aligning     starts at Aligning and runs to the end; if Step2 outputs are incomplete, it auto-runs Trimming_QC once
-                          Step5 runs only if --enable_vcffilter true
-  --run_step Calling      starts at Calling; if Step3 outputs are incomplete, it auto-runs Aligning once
-                          Step5 runs only if --enable_vcffilter true
-                          (no multi-level fallback beyond one step)
-  --run_step VCF_Filtering runs Step5 only from --input_vcf
+  --run_step Trimming_QC  requires --input_dir; runs Trimming_QC -> Aligning -> Calling (-> VCF_Filtering if enabled)
+  --run_step Aligning     auto-runs Trimming_QC once if Step2 outputs incomplete
+  --run_step Calling      auto-runs Aligning once if Step3 outputs incomplete; no multi-level fallback
+  --run_step VCF_Filtering runs Step5 only from --input_vcf; requires VCF.gz + .tbi
+
+Inputs and naming conventions:
+  PE input_dir layout (must end in _R1/_R2):
+    SimA_R1.fastq.gz, SimA_R2.fastq.gz, ...
+  SE input_dir layout:
+    SimSingleA.fastq.gz, SimSingleB.fq.gz
+  SRA_list format (TAB-separated):
+    SRRxxxxxxx<TAB>sample_id
+
+Global / container:
+  --image             Docker/registry image                    [default: leonardliu0910/wgs_variant_calling:latest]
+  --sif               Local Singularity/Apptainer image path   [overrides --image when set]
+
+Output / cleanup toggles:
+  --publish_cram      Publish markdup CRAM to results/03_markdup [default: true]
+  --cleanup_GVCFS     Delete interval gVCFs after GenomicsDBImport [default: true]
+  --skip_raw_fastqc   Skip Raw FastQC + Raw MultiQC (only honored with --run_step all) [default: false]
+
+Calling tuning (GATK GenomicsDBImport):
+  --gatk_genomicsdbimport_batch_size      Batch size                          [default: 50; large cohorts: 200+]
+  --gatk_genomicsdbimport_consolidate     Add --consolidate flag              [default: false; recommended for large cohorts]
+
+Extra tool flags (passed through verbatim):
+  --fastp_parameters                          Extra fastp options             [default: '']
+  --bwamem2_parameters                        Extra bwa-mem2 mem options      [default: '']
+  --bcftools_mpileup_parameters               Extra bcftools mpileup options  [default: '']
+  --bcftools_call_parameters                  Extra bcftools call options     [default: '']
+  --bcftools_concat_parameters                Extra bcftools concat options   [default: '']
+  --gatk_haplotypecaller_parameters           Extra HaplotypeCaller options   [default: '']
+  --gatk_genomicsdbimport_parameters          Extra GenomicsDBImport options  [default: '']
+  --gatk_genotypegvcfs_parameters             Extra GenotypeGVCFs options     [default: '']
+  --gatk_baserecalibrator_parameters          Extra BaseRecalibrator options  [default: '']
+  --gatk_applybqsr_parameters                 Extra ApplyBQSR options         [default: '']
+  --gatk_variantfiltration_snp_parameters     Extra SNP VariantFiltration     [default: '']
+  --gatk_variantfiltration_indel_parameters   Extra INDEL VariantFiltration   [default: '']
+
+VCF filtering controls (effective when --enable_vcffilter true):
+  --vcffilter_stop_after  phase1|final                                        [default: final]
+
+  phase1:
+    --phase1_remove_mislabeled                false|true                      [default: false]
+    --phase1_mislabeled_samples               File of sample ids to remove    [default: null]
+    --phase1_min_gq                           GQ mask threshold               [default: 20]
+    --phase1_min_dp                           DP mask threshold               [default: 5]
+    --phase1_enable_ab_mask                   Het allelic-balance mask        [default: true]
+    --phase1_sample_dp_min_factor             Lower per-sample DP factor      [default: 0.5]
+    --phase1_sample_dp_max_factor             Upper per-sample DP factor      [default: 2.5]
+    --phase1_sample_missing_plot_cutoffs_pct  Plot cutoffs (% missing, csv)   [default: '5,10,20,40']
+
+  phase2:
+    --phase2_remove_high_missing_samples      Remove high-missing samples     [default: true]
+    --phase2_high_missing_sample_file         Manual removal list (file)      [default: null]
+    --phase2_max_sample_missing               Max sample missingness fraction [default: null (user must set)]
+    --phase2_min_qual                         Site QUAL minimum               [default: 30]
+    --phase2_max_site_missing                 Max site missingness fraction   [default: 0.2]
+    --phase2_enable_site_mean_dp_filter       Enable mean-site-DP filter      [default: true]
+    --phase2_site_mean_dp_min_factor          Lower mean-site-DP factor       [default: 0.5]
+    --phase2_site_mean_dp_max_factor          Upper mean-site-DP factor       [default: 2.5]
+    --phase2_sample_missing_plot_cutoffs_pct  Plot cutoffs (% missing, csv)   [default: '5,10,20,40']
+
+  VCF filtering notes:
+    supports biallelic SNP only (no indels or mixed SNP+indel input)
+    standalone mode expects a tabix index at INPUT_VCF.tbi
+
+Cluster tuning (set in nextflow.config or via -c override.config):
+  process.errorStrategy / maxRetries          Retry transient failures        [retry up to 3, then finish]
+  executor.queueSize                          Max concurrent SLURM submissions [SLURM default: 50]
+  executor.submitRateLimit                    sbatch rate limiter             [SLURM default: '50/sec']
+  Per-process resources (cpus/memory/queue)   Edit withName: blocks in nextflow.config (commented-out templates with recommended values)
 
 Output root:
   results/
-""".stripIndent()
+"""
+
+    log.info((base + advanced).stripIndent())
 }
 
 // Validate user-facing parameters before channel creation.
@@ -662,8 +656,17 @@ workflow {
             raw_fastq_source = build_raw_fastq_channel()
         }
 
-        raw_qc = RAW_QC(raw_fastq_source)
-        step1_done_signal = raw_qc.multiqc_report
+        if (params.skip_raw_fastqc && params.run_step == 'all') {
+            log.info "skip_raw_fastqc=true: Raw FastQC + Raw MultiQC skipped"
+            // Dummy signal so the downstream `all` path can still gate on step1.
+            step1_done_signal = Channel.of('raw_qc_skipped')
+        } else {
+            if (params.skip_raw_fastqc && params.run_step == 'Raw_QC') {
+                log.warn "skip_raw_fastqc=true ignored: run_step=Raw_QC requires Raw FastQC to run"
+            }
+            raw_qc = RAW_QC(raw_fastq_source)
+            step1_done_signal = raw_qc.multiqc_report
+        }
     }
 
     if (params.run_step == 'all') {
