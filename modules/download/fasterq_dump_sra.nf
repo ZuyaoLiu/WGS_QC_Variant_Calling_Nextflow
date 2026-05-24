@@ -21,7 +21,7 @@ process FASTERQ_DUMP_SE_PROCESS {
       -f \
       ${accession}
 
-    pigz -f -p ${task.cpus} ${accession}.fastq
+    gzip -f ${accession}.fastq
     mv ${accession}.fastq.gz ${sample_id}.fastq.gz
     """
 }
@@ -51,7 +51,7 @@ process FASTERQ_DUMP_PE_PROCESS {
       -f \
       ${accession}
 
-    pigz -f -p ${task.cpus} ${accession}_1.fastq ${accession}_2.fastq
+    gzip -f ${accession}_1.fastq ${accession}_2.fastq
 
     mv ${accession}_1.fastq.gz ${sample_id}_R1.fastq.gz
     mv ${accession}_2.fastq.gz ${sample_id}_R2.fastq.gz
